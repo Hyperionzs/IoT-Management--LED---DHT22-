@@ -115,6 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late MqttServerClient _mqttClient;
   bool _isMqttConnected = false;
   bool _isDeviceOnline = false; // inferred from MQTT data recency
+  bool _isRefreshingMqtt = false;
   String _latestTemperatureText = '-';
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _mqttSub;
   String _lastTempRaw = '';
@@ -522,10 +523,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadProjects,
-          ),
+          if (_isMqttConnected)
+            IconButton(
+              icon: const Icon(Icons.stop),
+              tooltip: 'Putuskan MQTT',
+              onPressed: _disconnectMQTT,
+            )
+          else
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                if (_isRefreshingMqtt)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh MQTT',
+                  onPressed: _isRefreshingMqtt ? null : _refreshMqttStatus,
+                ),
+              ],
+            ),
         ],
       ),
       body: isLoading
@@ -572,6 +595,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _refreshMqttStatus() async {
+    if (_isRefreshingMqtt) return;
+    _safeSetState(() {
+      _isRefreshingMqtt = true;
+    });
+    try {
+      // Hindari flicker: jika sudah connected, jangan matikan indikator
+      final alreadyConnected = _isMqttConnected && _mqttClient.connectionStatus?.state == MqttConnectionState.connected;
+      if (alreadyConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MQTT sudah terhubung')),
+        );
+        return;
+      }
+
+      // Jika OFF, coba koneksi tanpa mereset teks/status agar tidak berkedip
+      try { await _mqttSub?.cancel(); } catch (_) {}
+      if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
+        _mqttClient.disconnect();
+      }
+      await _connectMQTT();
+
+      if (!_isMqttConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MQTT tidak terhubung')),
+        );
+      }
+    } finally {
+      _safeSetState(() {
+        _isRefreshingMqtt = false;
+      });
+    }
+  }
+
+  void _disconnectMQTT() {
+    try {
+      _mqttSub?.cancel();
+    } catch (_) {}
+    if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
+      _mqttClient.disconnect();
+    }
+    _safeSetState(() {
+      _isMqttConnected = false;
+      _isDeviceOnline = false;
+    });
   }
 }
 
