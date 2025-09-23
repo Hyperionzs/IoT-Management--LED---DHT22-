@@ -33,6 +33,7 @@ class IoTProject {
   String name;
   String description;
   String deviceIP;
+  String mqttHost;
   String serverUrl;
   int mqttPort;
   String wifiSSID;
@@ -50,6 +51,7 @@ class IoTProject {
     required this.name,
     required this.description,
     required this.deviceIP,
+    required this.mqttHost,
     required this.serverUrl,
     this.mqttPort = 1883,
     required this.wifiSSID,
@@ -68,6 +70,7 @@ class IoTProject {
     'name': name,
     'description': description,
     'deviceIP': deviceIP,
+    'mqttHost': mqttHost,
     'serverUrl': serverUrl,
     'mqttPort': mqttPort,
     'wifiSSID': wifiSSID,
@@ -86,6 +89,7 @@ class IoTProject {
     name: json['name'],
     description: json['description'],
     deviceIP: json['deviceIP'],
+    mqttHost: json['mqttHost'] ?? 'test.mosquitto.org',
     serverUrl: json['serverUrl'],
     mqttPort: (json['mqttPort'] is String)
         ? int.tryParse(json['mqttPort']) ?? 1883
@@ -150,8 +154,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           id: '001',
           name: 'ESP8266 DHT22 Sensor',
           description: 'Monitoring suhu dengan DHT22 dan kontrol 3 LED (Kuning, Hijau, Putih)',
-          deviceIP: '192.168.1.100',
-          serverUrl: 'http://10.210.102.180/display_data.php',
+          deviceIP: '10.238.122.200',
+          mqttHost: 'test.mosquitto.org',
+          serverUrl: 'http://10.238.122.180/display_data.php',
           mqttPort: 1883,
           wifiSSID: 'Sugooi',
           wifiPassword: 'Saturned',
@@ -168,6 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           name: 'Backup ESP8266 Device',
           description: 'Backup device untuk monitoring IoT',
           deviceIP: '192.168.1.101',
+          mqttHost: 'test.mosquitto.org',
           serverUrl: 'http://10.210.102.180/display_data.php',
           mqttPort: 1883,
           wifiSSID: 'Sugooi',
@@ -194,10 +200,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       String brokerHost = 'test.mosquitto.org';
       if (projects.isNotEmpty) {
         final p = projects.first;
-        // Prefer explicit Host field (deviceIP), fallback to Server URL host
-        brokerHost = (p.deviceIP.isNotEmpty)
-            ? p.deviceIP
-            : _extractHostFromUrlOrIp(p.serverUrl, fallback: 'test.mosquitto.org');
+        // Prefer MQTT Host, fallback to device IP, then to Server URL host
+        brokerHost = p.mqttHost.isNotEmpty
+            ? p.mqttHost
+            : (p.deviceIP.isNotEmpty
+                ? p.deviceIP
+                : _extractHostFromUrlOrIp(p.serverUrl, fallback: 'test.mosquitto.org'));
       }
 
       // Helper to initialize client with options
@@ -288,25 +296,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           
           if (!mounted) return;
           
-          // Parse JSON payload from ESP8266
+          // Parse JSON payload from ESP8266 (temperature, ledStatus, mode, timestamp)
           String displayText = payload;
           try {
             final jsonData = jsonDecode(payload);
             if (jsonData is Map<String, dynamic>) {
-              final temperature = jsonData['Suhu'] ?? 'N/A';
-              final ledStatus = jsonData['Status LED'] ?? 'N/A';
-              final time = jsonData['Waktu'] ?? 'N/A';
-              displayText = 'Suhu: $temperature, LED: $ledStatus, Waktu: $time';
-              
-              // Update project data if temperature is available
-              if (temperature != 'N/A' && temperature.toString().contains('°C')) {
-                final tempValue = double.tryParse(temperature.toString().replaceAll(' °C', ''));
-                if (tempValue != null && projects.isNotEmpty) {
-                  _safeSetState(() {
-                    projects[0].lastTemperature = tempValue;
-                    projects[0].lastUpdate = DateTime.now();
-                  });
-                }
+              final double? temperature = (jsonData['temperature'] is num)
+                  ? (jsonData['temperature'] as num).toDouble()
+                  : double.tryParse('${jsonData['temperature']}');
+              final String ledStatus = '${jsonData['ledStatus'] ?? 'N/A'}';
+              final String mode = '${jsonData['mode'] ?? 'N/A'}';
+              final String time = '${jsonData['timestamp'] ?? 'N/A'}';
+              displayText = 'Suhu: ${temperature?.toStringAsFixed(1) ?? 'N/A'}°C, LED: $ledStatus, Mode: $mode, Waktu: $time';
+
+              if (temperature != null && projects.isNotEmpty) {
+                _safeSetState(() {
+                  projects[0].lastTemperature = temperature;
+                  projects[0].lastUpdate = DateTime.now();
+                });
               }
             }
           } catch (e) {
@@ -482,7 +489,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // Kirim konfigurasi baru ke ESP32
+      // Kirim konfigurasi baru ke ESP8266 sesuai handler /config
       final response = await http.post(
         Uri.parse('http://${project.deviceIP}/config'),
         headers: {'Content-Type': 'application/json'},
@@ -490,6 +497,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'wifiSSID': project.wifiSSID,
           'wifiPassword': project.wifiPassword,
           'serverUrl': project.serverUrl,
+          // Kirim mqttHost sesuai firmware ESP8266
+          'mqttHost': project.mqttHost.isNotEmpty ? project.mqttHost : project.deviceIP,
+          'mqttPort': project.mqttPort,
+          // Gunakan topik default yang sama dengan firmware
+          'mqttTopicTemp': 'Anggra/sensor/suhu',
+          'mqttTopicLedCtrl': 'Anggra/sensor/led_control',
         }),
       );
 
@@ -1046,6 +1059,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   late TextEditingController _deviceIPController;
+  late TextEditingController _mqttHostController;
   late TextEditingController _mqttPortController;
   late TextEditingController _serverUrlController;
   late TextEditingController _wifiSSIDController;
@@ -1059,6 +1073,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _nameController = TextEditingController(text: project?.name ?? '');
     _descriptionController = TextEditingController(text: project?.description ?? '');
     _deviceIPController = TextEditingController(text: project?.deviceIP ?? '');
+    _mqttHostController = TextEditingController(text: project?.mqttHost ?? 'test.mosquitto.org');
     _mqttPortController = TextEditingController(text: (project?.mqttPort ?? 1883).toString());
     _serverUrlController = TextEditingController(text: project?.serverUrl ?? '');
     _wifiSSIDController = TextEditingController(text: project?.wifiSSID ?? '');
@@ -1108,6 +1123,16 @@ class _ProjectDialogState extends State<ProjectDialog> {
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
+                  controller: _mqttHostController,
+                  decoration: const InputDecoration(
+                    labelText: 'MQTT Host (broker)'
+                    ,
+                    hintText: 'contoh: test.mosquitto.org atau IP broker',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
                   controller: _mqttPortController,
                   decoration: const InputDecoration(
                     labelText: 'MQTT Port',
@@ -1126,7 +1151,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
                 TextFormField(
                   controller: _serverUrlController,
                   decoration: const InputDecoration(
-                    labelText: 'Server URL',
+                    labelText: 'Server URL (Pengiriman Data)',
                     hintText: 'contoh: http://10.210.102.180/display_data.php',
                     border: OutlineInputBorder(),
                   ),
@@ -1181,6 +1206,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
         name: _nameController.text,
         description: _descriptionController.text,
         deviceIP: _deviceIPController.text,
+        mqttHost: _mqttHostController.text.isNotEmpty ? _mqttHostController.text : 'test.mosquitto.org',
         serverUrl: _serverUrlController.text,
         mqttPort: int.tryParse(_mqttPortController.text) ?? 1883,
         wifiSSID: _wifiSSIDController.text,
@@ -1204,6 +1230,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _nameController.dispose();
     _descriptionController.dispose();
     _deviceIPController.dispose();
+    _mqttHostController.dispose();
     _mqttPortController.dispose();
     _serverUrlController.dispose();
     _wifiSSIDController.dispose();
