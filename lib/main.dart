@@ -34,6 +34,7 @@ class IoTProject {
   String description;
   String deviceIP;
   String serverUrl;
+  int mqttPort;
   String wifiSSID;
   String wifiPassword;
   bool yellowLedStatus;
@@ -50,6 +51,7 @@ class IoTProject {
     required this.description,
     required this.deviceIP,
     required this.serverUrl,
+    this.mqttPort = 1883,
     required this.wifiSSID,
     required this.wifiPassword,
     this.yellowLedStatus = false,
@@ -67,6 +69,7 @@ class IoTProject {
     'description': description,
     'deviceIP': deviceIP,
     'serverUrl': serverUrl,
+    'mqttPort': mqttPort,
     'wifiSSID': wifiSSID,
     'wifiPassword': wifiPassword,
     'yellowLedStatus': yellowLedStatus,
@@ -84,6 +87,9 @@ class IoTProject {
     description: json['description'],
     deviceIP: json['deviceIP'],
     serverUrl: json['serverUrl'],
+    mqttPort: (json['mqttPort'] is String)
+        ? int.tryParse(json['mqttPort']) ?? 1883
+        : (json['mqttPort'] ?? 1883),
     wifiSSID: json['wifiSSID'],
     wifiPassword: json['wifiPassword'],
     yellowLedStatus: json['yellowLedStatus'] ?? false,
@@ -145,6 +151,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           description: 'Monitoring suhu dengan DHT22 dan kontrol 3 LED (Kuning, Hijau, Putih)',
           deviceIP: '192.168.1.100',
           serverUrl: 'http://10.210.102.180/display_data.php',
+          mqttPort: 1883,
           wifiSSID: 'Sugooi',
           wifiPassword: 'Saturned',
           yellowLedStatus: false,
@@ -161,6 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           description: 'Backup device untuk monitoring IoT',
           deviceIP: '192.168.1.101',
           serverUrl: 'http://10.210.102.180/display_data.php',
+          mqttPort: 1883,
           wifiSSID: 'Sugooi',
           wifiPassword: 'Saturned',
           yellowLedStatus: false,
@@ -190,7 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Configure client settings
       _mqttClient.logging(on: false);
       _mqttClient.keepAlivePeriod = 30;
-      _mqttClient.port = 1883;
+      _mqttClient.port = (projects.isNotEmpty ? projects.first.mqttPort : 1883);
       _mqttClient.autoReconnect = true;
       _mqttClient.connectTimeoutPeriod = 10000; // 10 seconds timeout
       
@@ -948,6 +956,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   late TextEditingController _deviceIPController;
+  late TextEditingController _mqttPortController;
   late TextEditingController _serverUrlController;
   late TextEditingController _wifiSSIDController;
   late TextEditingController _wifiPasswordController;
@@ -960,6 +969,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _nameController = TextEditingController(text: project?.name ?? '');
     _descriptionController = TextEditingController(text: project?.description ?? '');
     _deviceIPController = TextEditingController(text: project?.deviceIP ?? '');
+    _mqttPortController = TextEditingController(text: (project?.mqttPort ?? 1883).toString());
     _serverUrlController = TextEditingController(text: project?.serverUrl ?? '');
     _wifiSSIDController = TextEditingController(text: project?.wifiSSID ?? '');
     _wifiPasswordController = TextEditingController(text: project?.wifiPassword ?? '');
@@ -1005,6 +1015,22 @@ class _ProjectDialogState extends State<ProjectDialog> {
                   ),
                   validator: (value) =>
                       value?.isEmpty == true ? 'Host wajib diisi' : null,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _mqttPortController,
+                  decoration: const InputDecoration(
+                    labelText: 'MQTT Port',
+                    hintText: 'contoh: 1883',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Port wajib diisi';
+                    final port = int.tryParse(value);
+                    if (port == null || port < 1 || port > 65535) return 'Port tidak valid';
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -1066,6 +1092,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
         description: _descriptionController.text,
         deviceIP: _deviceIPController.text,
         serverUrl: _serverUrlController.text,
+        mqttPort: int.tryParse(_mqttPortController.text) ?? 1883,
         wifiSSID: _wifiSSIDController.text,
         wifiPassword: _wifiPasswordController.text,
         yellowLedStatus: widget.project?.yellowLedStatus ?? false,
@@ -1087,6 +1114,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _nameController.dispose();
     _descriptionController.dispose();
     _deviceIPController.dispose();
+    _mqttPortController.dispose();
     _serverUrlController.dispose();
     _wifiSSIDController.dispose();
     _wifiPasswordController.dispose();
