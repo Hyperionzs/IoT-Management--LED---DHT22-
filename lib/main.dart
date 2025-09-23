@@ -17,6 +17,7 @@ class IoTDashboardApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'IoT Dashboard',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
