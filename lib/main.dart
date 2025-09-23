@@ -190,51 +190,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final clientId = 'flutter_monitoring_iot_${DateTime.now().millisecondsSinceEpoch}';
       
       // Initialize MQTT client
-      final String brokerHost = projects.isNotEmpty
-          ? _extractHostFromUrlOrIp(projects.first.serverUrl, fallback: 'test.mosquitto.org')
-          : 'test.mosquitto.org';
-      _mqttClient = MqttServerClient(brokerHost, clientId);
-      
-      // Configure client settings
-      _mqttClient.logging(on: false);
-      _mqttClient.keepAlivePeriod = 30;
-      _mqttClient.port = (projects.isNotEmpty ? projects.first.mqttPort : 1883);
-      _mqttClient.autoReconnect = true;
-      _mqttClient.connectTimeoutPeriod = 10000; // 10 seconds timeout
-      
-      // Set connection callbacks
-      _mqttClient.onConnected = () {
-        print('MQTT Connected successfully');
-        _safeSetState(() {
-          _isMqttConnected = true;
-        });
-      };
-      
-      _mqttClient.onDisconnected = () {
-        print('MQTT Disconnected');
-        _safeSetState(() {
-          _isMqttConnected = false;
-          _isDeviceOnline = false;
-        });
-      };
-      
-      _mqttClient.onAutoReconnect = () {
-        print('MQTT Auto reconnecting...');
-      };
+      String brokerHost = 'test.mosquitto.org';
+      if (projects.isNotEmpty) {
+        final p = projects.first;
+        // Prefer explicit Host field (deviceIP), fallback to Server URL host
+        brokerHost = (p.deviceIP.isNotEmpty)
+            ? p.deviceIP
+            : _extractHostFromUrlOrIp(p.serverUrl, fallback: 'test.mosquitto.org');
+      }
 
-      // Connect to broker
-      print('Connecting to MQTT broker...');
-      final connectionMessage = MqttConnectMessage()
-          .withClientIdentifier(clientId)
-          .withWillTopic('willtopic')
-          .withWillMessage('My Will message')
-          .startClean()
-          .withWillQos(MqttQos.atLeastOnce);
-      
-      _mqttClient.connectionMessage = connectionMessage;
-      
-      final connectionStatus = await _mqttClient.connect();
-      
+      // Helper to initialize client with options
+      MqttServerClient _buildClient({required bool useWebSocket, required int port}) {
+        final client = MqttServerClient(brokerHost, clientId);
+        client.logging(on: false);
+        client.keepAlivePeriod = 30;
+        client.port = port;
+        client.autoReconnect = true;
+        client.connectTimeoutPeriod = 10000; // 10 seconds timeout
+        client.useWebSocket = useWebSocket;
+
+        client.onConnected = () {
+          print('MQTT Connected successfully');
+          _safeSetState(() {
+            _isMqttConnected = true;
+          });
+        };
+        client.onDisconnected = () {
+          print('MQTT Disconnected');
+          _safeSetState(() {
+            _isMqttConnected = false;
+            _isDeviceOnline = false;
+          });
+        };
+        client.onAutoReconnect = () {
+          print('MQTT Auto reconnecting...');
+        };
+
+        final connectionMessage = MqttConnectMessage()
+            .withClientIdentifier(clientId)
+            .startClean()
+            .withWillQos(MqttQos.atLeastOnce);
+        client.connectionMessage = connectionMessage;
+        return client;
+      }
+
+      // First try: plain TCP on configured port (default 1883)
+      final int tcpPort = (projects.isNotEmpty ? projects.first.mqttPort : 1883);
+      _mqttClient = _buildClient(useWebSocket: false, port: tcpPort);
+      print('Connecting to MQTT broker (TCP:$tcpPort)...');
+      MqttClientConnectionStatus? connectionStatus = await _mqttClient.connect();
+
+      // Fallback: WebSocket on 8081 if TCP failed
+      if (connectionStatus?.state != MqttConnectionState.connected) {
+        print('TCP connect failed: ${connectionStatus?.state}, trying WebSocket:8081');
+        try {
+          try { await _mqttSub?.cancel(); } catch (_) {}
+          if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
+            _mqttClient.disconnect();
+          }
+          _mqttClient = _buildClient(useWebSocket: true, port: 8081);
+          connectionStatus = await _mqttClient.connect();
+        } catch (e) {
+          print('WebSocket connect error: $e');
+        }
+      }
+
       if (connectionStatus?.state == MqttConnectionState.connected) {
         print('MQTT Connected successfully');
         _safeSetState(() {
