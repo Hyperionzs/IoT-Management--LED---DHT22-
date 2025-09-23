@@ -28,6 +28,104 @@ class IoTDashboardApp extends StatelessWidget {
   }
 }
 
+class _WifiConfigSection extends StatefulWidget {
+  final IoTProject project;
+  final Future<void> Function(IoTProject, String, String) onSetWifi;
+
+  const _WifiConfigSection({required this.project, required this.onSetWifi});
+
+  @override
+  State<_WifiConfigSection> createState() => _WifiConfigSectionState();
+}
+
+class _WifiConfigSectionState extends State<_WifiConfigSection> {
+  late TextEditingController _ssidCtrl;
+  late TextEditingController _passCtrl;
+  bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _ssidCtrl = TextEditingController(text: widget.project.wifiSSID);
+    _passCtrl = TextEditingController(text: widget.project.wifiPassword);
+  }
+
+  @override
+  void dispose() {
+    _ssidCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blueGrey.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Konfigurasi WiFi', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ssidCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'SSID',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _passCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                  ),
+                  obscureText: _obscure,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => widget.onSetWifi(widget.project, _ssidCtrl.text.trim(), _passCtrl.text),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade600, foregroundColor: Colors.white),
+                child: const Text('Set!'),
+              )
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TemperatureText extends StatelessWidget {
+  final String text;
+  const _TemperatureText({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Suhu DHT22 (MQTT): $text',
+      style: const TextStyle(fontWeight: FontWeight.w600),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
 class IoTProject {
   String id;
   String name;
@@ -528,6 +626,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _setWifiConfig(IoTProject project, String ssid, String password) async {
+    if (ssid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('SSID tidak boleh kosong')),
+      );
+      return;
+    }
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://${project.deviceIP}/config'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'wifiSSID': ssid,
+          'wifiPassword': password,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        _safeSetState(() {
+          project.wifiSSID = ssid;
+          project.wifiPassword = password;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WiFi config tersimpan. Reboot perangkat untuk menerapkan.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal set WiFi: HTTP ${response.statusCode}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal set WiFi: $e')),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -579,6 +722,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 temperatureText: _latestTemperatureText,
                 isMqttConnected: _isMqttConnected,
                 onSendLedCommand: _publishLedCommand,
+                onSetWifi: _setWifiConfig,
                 );
               },
             ),
@@ -666,6 +810,7 @@ class ProjectCard extends StatelessWidget {
   final String temperatureText;
   final bool isMqttConnected;
   final void Function(String) onSendLedCommand;
+  final Future<void> Function(IoTProject, String, String) onSetWifi;
   
   // Allow external online indicator via project.isOnline
 
@@ -678,6 +823,7 @@ class ProjectCard extends StatelessWidget {
     required this.temperatureText,
     required this.isMqttConnected,
     required this.onSendLedCommand,
+    required this.onSetWifi,
   }) : super(key: key);
 
   @override
@@ -758,6 +904,10 @@ class ProjectCard extends StatelessWidget {
             ),
             
             const SizedBox(height: 16),
+            // WiFi Config Section under IP card
+            _WifiConfigSection(project: project, onSetWifi: onSetWifi),
+
+            const SizedBox(height: 16),
             // Temperature from MQTT and DHT22
             Container(
               padding: const EdgeInsets.all(12),
@@ -770,14 +920,9 @@ class ProjectCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.thermostat, size: 20, color: Colors.orange),
+                      const Icon(Icons.thermostat, size: 22, color: Colors.orange),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Suhu DHT22 (MQTT): $temperatureText',
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ),
+                      Expanded(child: _TemperatureText(text: temperatureText)),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -811,6 +956,11 @@ class ProjectCard extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                        const Spacer(),
+                        Text(
+                          _formatDateTime(project.lastUpdate),
+                          style: TextStyle(color: Colors.orange.shade700, fontSize: 11),
+                        )
                       ],
                     ),
                   ],
