@@ -19,7 +19,8 @@ class IoTDashboardApp extends StatelessWidget {
       title: 'IoT Dashboard',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        useMaterial3: true,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const DashboardScreen(),
@@ -107,10 +108,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool isLoading = false;
   late MqttServerClient _mqttClient;
   bool _isMqttConnected = false;
+  bool _isDeviceOnline = false; // inferred from MQTT data recency
   String _latestTemperatureText = '-';
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _mqttSub;
   String _lastTempRaw = '';
   int _lastTempSetStateMs = 0;
+  Timer? _deviceOnlineTimer;
 
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
@@ -129,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadProjects();
     _connectMQTT();
+    _startDeviceOnlineWatcher();
   }
 
   void _loadProjects() {
@@ -178,7 +182,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final clientId = 'flutter_monitoring_iot_${DateTime.now().millisecondsSinceEpoch}';
       
       // Initialize MQTT client
-      _mqttClient = MqttServerClient('test.mosquitto.org', clientId);
+      final String brokerHost = projects.isNotEmpty
+          ? _extractHostFromUrlOrIp(projects.first.serverUrl, fallback: 'test.mosquitto.org')
+          : 'test.mosquitto.org';
+      _mqttClient = MqttServerClient(brokerHost, clientId);
       
       // Configure client settings
       _mqttClient.logging(on: false);
@@ -199,6 +206,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         print('MQTT Disconnected');
         _safeSetState(() {
           _isMqttConnected = false;
+          _isDeviceOnline = false;
         });
       };
       
@@ -247,6 +255,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           
           _lastTempRaw = payload;
           _lastTempSetStateMs = nowMs;
+          _markDeviceSeenNow();
           
           if (!mounted) return;
           
@@ -295,6 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('MQTT Connection error: $e');
       _safeSetState(() {
         _isMqttConnected = false;
+        _isDeviceOnline = false;
       });
       
       // Try to reconnect after 5 seconds
@@ -303,6 +313,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _connectMQTT();
         }
       });
+    }
+  }
+
+  void _startDeviceOnlineWatcher() {
+    _deviceOnlineTimer?.cancel();
+    _deviceOnlineTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      // If last message older than 15s, mark offline
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final bool consideredOnline = (nowMs - _lastTempSetStateMs) < 15000 && _isMqttConnected;
+      if (consideredOnline != _isDeviceOnline) {
+        _safeSetState(() {
+          _isDeviceOnline = consideredOnline;
+          if (projects.isNotEmpty) {
+            projects[0].isOnline = _isDeviceOnline;
+          }
+        });
+      }
+    });
+  }
+
+  void _markDeviceSeenNow() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if ((nowMs - _lastTempSetStateMs) > 0) {
+      // already updated _lastTempSetStateMs in listener
+    }
+    if (!_isDeviceOnline) {
+      _safeSetState(() {
+        _isDeviceOnline = true;
+        if (projects.isNotEmpty) {
+          projects[0].isOnline = true;
+        }
+      });
+    }
+  }
+
+  String _extractHostFromUrlOrIp(String value, {required String fallback}) {
+    try {
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        final uri = Uri.parse(value);
+        return uri.host.isNotEmpty ? uri.host : fallback;
+      }
+      // assume raw host/ip
+      return value.isNotEmpty ? value : fallback;
+    } catch (_) {
+      return fallback;
     }
   }
 
@@ -336,6 +391,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _mqttSub?.cancel();
+    _deviceOnlineTimer?.cancel();
     if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
       _mqttClient.disconnect();
     }
@@ -499,6 +555,8 @@ class ProjectCard extends StatelessWidget {
   final String temperatureText;
   final bool isMqttConnected;
   final void Function(String) onSendLedCommand;
+  
+  // Allow external online indicator via project.isOnline
 
   const ProjectCard({
     Key? key,
@@ -515,7 +573,7 @@ class ProjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 4,
+      elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -544,16 +602,16 @@ class ProjectCard extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: project.isOnline ? Colors.green : Colors.red,
-                        shape: BoxShape.circle,
+                    Chip(
+                      avatar: CircleAvatar(
+                        backgroundColor: project.isOnline ? Colors.green : Colors.red,
+                        radius: 6,
                       ),
+                      label: Text(project.isOnline ? 'Online' : 'Offline'),
+                      backgroundColor: project.isOnline ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
-                    const SizedBox(width: 8),
-                    Text(project.isOnline ? 'Online' : 'Offline'),
                     IconButton(
                       icon: const Icon(Icons.settings),
                       onPressed: onEdit,
@@ -568,8 +626,8 @@ class ProjectCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
@@ -594,7 +652,7 @@ class ProjectCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.orange.shade200),
               ),
               child: Column(
@@ -615,9 +673,15 @@ class ProjectCard extends StatelessWidget {
                           color: isMqttConnected ? Colors.green : Colors.red,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(
-                          isMqttConnected ? 'MQTT ON' : 'MQTT OFF',
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        child: Row(
+                          children: [
+                            Icon(isMqttConnected ? Icons.cloud_done : Icons.cloud_off, size: 14, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              isMqttConnected ? 'MQTT ON' : 'MQTT OFF',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -887,6 +951,7 @@ class _ProjectDialogState extends State<ProjectDialog> {
   late TextEditingController _serverUrlController;
   late TextEditingController _wifiSSIDController;
   late TextEditingController _wifiPasswordController;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -934,12 +999,12 @@ class _ProjectDialogState extends State<ProjectDialog> {
                 TextFormField(
                   controller: _deviceIPController,
                   decoration: const InputDecoration(
-                    labelText: 'IP Address ESP',
-                    hintText: 'contoh: 192.168.1.100',
+                    labelText: 'Host',
+                    hintText: 'contoh: test.mosquitto.org atau 10.210.102.180',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) =>
-                      value?.isEmpty == true ? 'IP Address wajib diisi' : null,
+                      value?.isEmpty == true ? 'Host wajib diisi' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -961,11 +1026,19 @@ class _ProjectDialogState extends State<ProjectDialog> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _wifiPasswordController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'WiFi Password',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
+                  obscureText: _obscurePassword,
                 ),
               ],
             ),
