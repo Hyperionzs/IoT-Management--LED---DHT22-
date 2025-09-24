@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'dart:async';
+import 'dart:io';
 
 void main() {
   runApp(const IoTDashboardApp());
@@ -626,7 +627,7 @@ class _TemperatureDisplay extends StatelessWidget {
                   const Icon(Icons.sensors, size: 18, color: Color(0xFFFF6B35)),
                   const SizedBox(width: 8),
                   Text(
-                    'Terakhir: ${lastTemperature!.toStringAsFixed(1)}°C',
+                    'Suhu Terakhir : ${lastTemperature!.toStringAsFixed(1)}°C',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -1098,40 +1099,98 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   Future<void> _setWifiConfig(IoTProject project, String ssid, String password) async {
-    if (ssid.isEmpty) {
+    String trimmedSsid = ssid.trim();
+    if (trimmedSsid.isEmpty) {
       _showSnackBar('SSID tidak boleh kosong', isError: true);
       return;
     }
+    if (trimmedSsid.length > 32) {
+      _showSnackBar('SSID terlalu panjang (maksimal 32 karakter)', isError: true);
+      return;
+    }
+    // Basic format check: disallow surrounding quotes and control chars
+    final invalidPattern = RegExp(r"[\r\n\t]\s*");
+    if (invalidPattern.hasMatch(trimmedSsid)) {
+      _showSnackBar('Format SSID tidak valid', isError: true);
+      return;
+    }
+
     setState(() {
       isLoading = true;
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('http://${project.deviceIP}/config'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'wifiSSID': ssid,
-          'wifiPassword': password,
-        }),
-      );
+      final uri = Uri.parse('http://${project.deviceIP}/config');
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'wifiSSID': trimmedSsid,
+              'wifiPassword': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 7));
 
       if (response.statusCode == 200) {
+        // Try to inspect body if device returns a result field
+        final body = response.body;
+        if (body.isNotEmpty) {
+          try {
+            final json = jsonDecode(body);
+            final result = (json is Map<String, dynamic>) ? json['result']?.toString().toLowerCase() : null;
+            if (result == 'ssid_not_found' || result == 'wifi_not_found') {
+              _showSnackBar('SSID tidak ditemukan. Pastikan jaringan tersedia dan dalam jangkauan.', isError: true);
+              return;
+            }
+            if (result == 'invalid_ssid') {
+              _showSnackBar('SSID tidak valid. Periksa penulisan SSID Anda.', isError: true);
+              return;
+            }
+          } catch (_) {
+            // ignore body parse errors
+          }
+        }
         _safeSetState(() {
-          project.wifiSSID = ssid;
+          project.wifiSSID = trimmedSsid;
           project.wifiPassword = password;
         });
-        _showSnackBar('WiFi tersimpan. Restart perangkat untuk menerapkan.', isError: false);
+        _showSnackBar('WiFi tersimpan. Restart perangkat untuk menerapkan. Jika SSID salah, perangkat tidak akan terhubung.', isError: false);
       } else {
-        _showSnackBar('Gagal set WiFi: HTTP ${response.statusCode}', isError: true);
+        final msg = _mapWifiHttpError(response.statusCode, response.body);
+        _showSnackBar(msg, isError: true);
       }
+    } on TimeoutException {
+      _showSnackBar('Perangkat tidak merespons. Pastikan ESP terhubung dan coba lagi.', isError: true);
+    } on SocketException {
+      _showSnackBar('Tidak dapat terhubung ke perangkat. Periksa IP ESP atau jaringan Anda.', isError: true);
     } catch (e) {
-      _showSnackBar('Error WiFi: $e', isError: true);
+      _showSnackBar('Gagal set WiFi: $e', isError: true);
     } finally {
       setState(() {
         isLoading = false;
       });
     }
+  }
+
+  String _mapWifiHttpError(int statusCode, String body) {
+    final lower = body.toLowerCase();
+    if (statusCode == 400) {
+      if (lower.contains('ssid') && lower.contains('not') && lower.contains('found')) {
+        return 'SSID tidak ditemukan. Periksa nama jaringan WiFi tujuan.';
+      }
+      if (lower.contains('invalid') && lower.contains('ssid')) {
+        return 'SSID tidak valid. Periksa penulisan SSID Anda.';
+      }
+      return 'Permintaan tidak valid (400). Periksa parameter yang dikirim.';
+    }
+    if (statusCode == 404) {
+      return 'Endpoint konfigurasi tidak ditemukan (404). Periksa firmware ESP.';
+    }
+    if (statusCode == 500) {
+      return 'Terjadi kesalahan pada perangkat (500). Coba lagi beberapa saat.';
+    }
+    return 'Gagal set WiFi: HTTP $statusCode. ${body.isNotEmpty ? 'Detail: $body' : ''}'.trim();
   }
 
   @override
