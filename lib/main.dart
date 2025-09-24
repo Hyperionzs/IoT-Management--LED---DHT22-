@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mqtt_client/mqtt_client.dart';
@@ -16,14 +17,211 @@ class IoTDashboardApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IoT Dashboard',
+      title: 'Smart IoT Dashboard',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2196F3),
+          brightness: Brightness.light,
+        ),
+        cardTheme: CardTheme(
+          elevation: 4,
+          shadowColor: Colors.black12,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            elevation: 2,
+            shadowColor: Colors.black26,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey[50],
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey[300]!),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey[300]!),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+          ),
+        ),
       ),
       home: const DashboardScreen(),
+    );
+  }
+}
+
+// Animated Widget for better UX
+class AnimatedCounter extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  const AnimatedCounter({
+    Key? key,
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.icon,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PulsingDot extends StatefulWidget {
+  final Color color;
+  final bool isActive;
+
+  const PulsingDot({Key? key, required this.color, required this.isActive}) : super(key: key);
+
+  @override
+  State<PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<PulsingDot> with TickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    );
+    _animation = Tween(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    
+    if (widget.isActive) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(PulsingDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: widget.color.withOpacity(_animation.value),
+            shape: BoxShape.circle,
+            boxShadow: widget.isActive ? [
+              BoxShadow(
+                color: widget.color.withOpacity(0.4),
+                blurRadius: 4,
+                spreadRadius: 1,
+              ),
+            ] : null,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class GlassContainer extends StatelessWidget {
+  final Widget child;
+  final Color? color;
+  final double? height;
+  final double? width;
+  final EdgeInsets? padding;
+
+  const GlassContainer({
+    Key? key,
+    required this.child,
+    this.color,
+    this.height,
+    this.width,
+    this.padding,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: width,
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color ?? Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 }
@@ -38,57 +236,115 @@ class _WifiConfigSection extends StatefulWidget {
   State<_WifiConfigSection> createState() => _WifiConfigSectionState();
 }
 
-class _WifiConfigSectionState extends State<_WifiConfigSection> {
+class _WifiConfigSectionState extends State<_WifiConfigSection> with TickerProviderStateMixin {
   late TextEditingController _ssidCtrl;
   late TextEditingController _passCtrl;
   bool _obscure = true;
+  bool _isExpanded = false;
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
     _ssidCtrl = TextEditingController(text: widget.project.wifiSSID);
     _passCtrl = TextEditingController(text: widget.project.wifiPassword);
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
   }
 
   @override
   void dispose() {
     _ssidCtrl.dispose();
     _passCtrl.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blueGrey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.shade100),
-      ),
+    return GlassContainer(
+      color: const Color(0xFF6366F1).withOpacity(0.05),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Konfigurasi WiFi', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+                if (_isExpanded) {
+                  _animationController.forward();
+                } else {
+                  _animationController.reverse();
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.wifi, color: Color(0xFF6366F1), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Konfigurasi WiFi',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 300),
+                    child: const Icon(Icons.keyboard_arrow_down),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            child: _isExpanded ? _buildConfigForm() : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfigForm() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        children: [
           Row(
             children: [
               Expanded(
-                child: TextField(
+                flex: 2,
+                child: TextFormField(
                   controller: _ssidCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'SSID',
-                    border: OutlineInputBorder(),
+                    labelText: 'SSID WiFi',
+                    prefixIcon: Icon(Icons.router),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
-                child: TextField(
+                flex: 2,
+                child: TextFormField(
                   controller: _passCtrl,
                   decoration: InputDecoration(
                     labelText: 'Password',
-                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -97,12 +353,19 @@ class _WifiConfigSectionState extends State<_WifiConfigSection> {
                   obscureText: _obscure,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: () => widget.onSetWifi(widget.project, _ssidCtrl.text.trim(), _passCtrl.text),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade600, foregroundColor: Colors.white),
-                child: const Text('Set!'),
-              )
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  widget.onSetWifi(widget.project, _ssidCtrl.text.trim(), _passCtrl.text);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                ),
+                child: const Text('Simpan', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
             ],
           ),
         ],
@@ -111,18 +374,152 @@ class _WifiConfigSectionState extends State<_WifiConfigSection> {
   }
 }
 
-class _TemperatureText extends StatelessWidget {
+class _TemperatureDisplay extends StatelessWidget {
   final String text;
-  const _TemperatureText({required this.text});
+  final bool isMqttConnected;
+  final double? lastTemperature;
+  final DateTime lastUpdate;
+
+  const _TemperatureDisplay({
+    required this.text,
+    required this.isMqttConnected,
+    this.lastTemperature,
+    required this.lastUpdate,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'Suhu DHT22 (MQTT): $text',
-      style: const TextStyle(fontWeight: FontWeight.w600),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF6B35).withOpacity(0.1),
+            const Color(0xFFFF8A50).withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B35).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.thermostat, color: Color(0xFFFF6B35), size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Sensor DHT22',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFF6B35),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        text,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isMqttConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      PulsingDot(
+                        color: Colors.white,
+                        isActive: isMqttConnected,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isMqttConnected ? 'Online' : 'Offline',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (lastTemperature != null)
+            Container(
+              margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.sensors, size: 18, color: Color(0xFFFF6B35)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Terakhir: ${lastTemperature!.toStringAsFixed(1)}°C',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFF6B35),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    _formatDateTime(lastUpdate),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inMinutes < 1) {
+      return 'Baru saja';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m lalu';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}j lalu';
+    } else {
+      return '${difference.inDays}h lalu';
+    }
   }
 }
 
@@ -211,19 +608,22 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
   List<IoTProject> projects = [];
   bool isLoading = false;
   late MqttServerClient _mqttClient;
   bool _isMqttConnected = false;
-  bool _isDeviceOnline = false; // inferred from MQTT data recency
+  bool _isDeviceOnline = false;
   bool _isRefreshingMqtt = false;
-  String _latestTemperatureText = '-';
+  String _latestTemperatureText = 'Menunggu data sensor...';
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _mqttSub;
   String _lastTempRaw = '';
   int _lastTempSetStateMs = 0;
   Timer? _deviceOnlineTimer;
   Timer? _refreshTimeoutTimer;
+
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
 
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
@@ -240,19 +640,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    
     _loadProjects();
     _connectMQTT();
     _startDeviceOnlineWatcher();
+    
+    _fadeController.forward();
+    _slideController.forward();
   }
 
   void _loadProjects() {
-    // Sample data - dalam implementasi nyata, load dari database/API
     setState(() {
       projects = [
         IoTProject(
           id: '001',
-          name: 'ESP8266 DHT22 Sensor',
-          description: 'Monitoring suhu dengan DHT22 dan kontrol 3 LED (Kuning, Hijau, Putih)',
+          name: 'ESP8266 Smart Sensor',
+          description: 'Monitoring suhu DHT22 dengan kontrol LED multi-mode',
           deviceIP: '10.238.122.200',
           mqttHost: 'test.mosquitto.org',
           serverUrl: 'http://10.238.122.180/display_data.php',
@@ -267,39 +678,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           lastUpdate: DateTime.now().subtract(const Duration(minutes: 5)),
           isOnline: true,
         ),
-        IoTProject(
-          id: '002',
-          name: 'Backup ESP8266 Device',
-          description: 'Backup device untuk monitoring IoT',
-          deviceIP: '192.168.1.101',
-          mqttHost: 'test.mosquitto.org',
-          serverUrl: 'http://10.210.102.180/display_data.php',
-          mqttPort: 1883,
-          wifiSSID: 'Sugooi',
-          wifiPassword: 'Saturned',
-          yellowLedStatus: false,
-          greenLedStatus: false,
-          whiteLedStatus: false,
-          lastLedMode: 'OFF',
-          lastUpdate: DateTime.now().subtract(const Duration(hours: 2)),
-          isOnline: false,
-        ),
       ];
     });
   }
 
-// ... existing code ...
-
   Future<void> _connectMQTT() async {
     try {
-      // Create unique client ID
-      final clientId = 'flutter_monitoring_iot_${DateTime.now().millisecondsSinceEpoch}';
+      final clientId = 'smart_iot_dashboard_${DateTime.now().millisecondsSinceEpoch}';
       
-      // Initialize MQTT client
       String brokerHost = 'test.mosquitto.org';
       if (projects.isNotEmpty) {
         final p = projects.first;
-        // Prefer MQTT Host, fallback to device IP, then to Server URL host
         brokerHost = p.mqttHost.isNotEmpty
             ? p.mqttHost
             : (p.deviceIP.isNotEmpty
@@ -307,14 +696,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 : _extractHostFromUrlOrIp(p.serverUrl, fallback: 'test.mosquitto.org'));
       }
 
-      // Helper to initialize client with options
-      MqttServerClient _buildClient({required bool useWebSocket, required int port}) {
+      MqttServerClient buildClient({required bool useWebSocket, required int port}) {
         final client = MqttServerClient(brokerHost, clientId);
         client.logging(on: false);
         client.keepAlivePeriod = 30;
         client.port = port;
         client.autoReconnect = true;
-        client.connectTimeoutPeriod = 10000; // 10 seconds timeout
+        client.connectTimeoutPeriod = 10000;
         client.useWebSocket = useWebSocket;
 
         client.onConnected = () {
@@ -330,9 +718,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _isDeviceOnline = false;
           });
         };
-        client.onAutoReconnect = () {
-          print('MQTT Auto reconnecting...');
-        };
 
         final connectionMessage = MqttConnectMessage()
             .withClientIdentifier(clientId)
@@ -342,21 +727,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return client;
       }
 
-      // First try: plain TCP on configured port (default 1883)
       final int tcpPort = (projects.isNotEmpty ? projects.first.mqttPort : 1883);
-      _mqttClient = _buildClient(useWebSocket: false, port: tcpPort);
-      print('Connecting to MQTT broker (TCP:$tcpPort)...');
+      _mqttClient = buildClient(useWebSocket: false, port: tcpPort);
       MqttClientConnectionStatus? connectionStatus = await _mqttClient.connect();
 
-      // Fallback: WebSocket on 8081 if TCP failed
       if (connectionStatus?.state != MqttConnectionState.connected) {
-        print('TCP connect failed: ${connectionStatus?.state}, trying WebSocket:8081');
         try {
-          try { await _mqttSub?.cancel(); } catch (_) {}
+          await _mqttSub?.cancel();
           if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
             _mqttClient.disconnect();
           }
-          _mqttClient = _buildClient(useWebSocket: true, port: 8081);
+          _mqttClient = buildClient(useWebSocket: true, port: 8081);
           connectionStatus = await _mqttClient.connect();
         } catch (e) {
           print('WebSocket connect error: $e');
@@ -364,25 +745,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       if (connectionStatus?.state == MqttConnectionState.connected) {
-        print('MQTT Connected successfully');
         _safeSetState(() {
           _isMqttConnected = true;
         });
         
-        // Subscribe to temperature topic
         _mqttClient.subscribe('Anggra/sensor/suhu', MqttQos.atMostOnce);
-        print('Subscribed to Anggra/sensor/suhu');
         
-        // Listen for messages
         _mqttSub = _mqttClient.updates?.listen((List<MqttReceivedMessage<MqttMessage?>>? c) {
           if (c == null || c.isEmpty) return;
           
           final recMess = c[0].payload as MqttPublishMessage;
           final payload = MqttPublishPayload.bytesToStringAsString(recMess.payload.message).trim();
-          final topic = c[0].topic;
-          
-          print('Received message on topic: $topic');
-          print('Payload: $payload');
           
           final nowMs = DateTime.now().millisecondsSinceEpoch;
           if (payload == _lastTempRaw && nowMs - _lastTempSetStateMs < 500) {
@@ -395,7 +768,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           
           if (!mounted) return;
           
-          // Parse JSON payload from ESP8266 (temperature, ledStatus, mode, timestamp)
           String displayText = payload;
           try {
             final jsonData = jsonDecode(payload);
@@ -406,7 +778,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final String ledStatus = '${jsonData['ledStatus'] ?? 'N/A'}';
               final String mode = '${jsonData['mode'] ?? 'N/A'}';
               final String time = '${jsonData['timestamp'] ?? 'N/A'}';
-              displayText = 'Suhu: ${temperature?.toStringAsFixed(1) ?? 'N/A'}°C, LED: $ledStatus, Mode: $mode, Waktu: $time';
+              
+              displayText = 'Suhu: ${temperature?.toStringAsFixed(1) ?? 'N/A'}°C | LED: $ledStatus | Mode: $mode';
 
               if (temperature != null && projects.isNotEmpty) {
                 _safeSetState(() {
@@ -416,8 +789,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               }
             }
           } catch (e) {
-            print('JSON parsing error: $e');
-            // If JSON parsing fails, use raw payload
             displayText = payload;
           }
           
@@ -429,7 +800,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
         
       } else {
-        print('MQTT Connection failed: ${connectionStatus?.state}');
         _safeSetState(() {
           _isMqttConnected = false;
         });
@@ -442,7 +812,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _isDeviceOnline = false;
       });
       
-      // Try to reconnect after 5 seconds
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted) {
           _connectMQTT();
@@ -454,7 +823,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startDeviceOnlineWatcher() {
     _deviceOnlineTimer?.cancel();
     _deviceOnlineTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      // If last message older than 15s, mark offline
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       final bool consideredOnline = (nowMs - _lastTempSetStateMs) < 15000 && _isMqttConnected;
       if (consideredOnline != _isDeviceOnline) {
@@ -469,10 +837,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _markDeviceSeenNow() {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if ((nowMs - _lastTempSetStateMs) > 0) {
-      // already updated _lastTempSetStateMs in listener
-    }
     if (!_isDeviceOnline) {
       _safeSetState(() {
         _isDeviceOnline = true;
@@ -489,7 +853,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final uri = Uri.parse(value);
         return uri.host.isNotEmpty ? uri.host : fallback;
       }
-      // assume raw host/ip
       return value.isNotEmpty ? value : fallback;
     } catch (_) {
       return fallback;
@@ -498,89 +861,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _publishLedCommand(String command) {
     if (!_isMqttConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('MQTT belum terhubung')),
-      );
+      _showSnackBar('MQTT belum terhubung', isError: true);
       return;
     }
     
     try {
+      HapticFeedback.lightImpact();
       final builder = MqttClientPayloadBuilder();
       builder.addString(command);
       _mqttClient.publishMessage('Anggra/sensor/led_control', MqttQos.atMostOnce, builder.payload!);
-      print('Published command: $command');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Perintah terkirim: $command')),
-      );
+      _showSnackBar('Perintah "$command" berhasil dikirim', isError: false);
     } catch (e) {
-      print('Publish error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengirim perintah: $e')),
-      );
+      _showSnackBar('Gagal mengirim perintah: $e', isError: true);
     }
   }
 
-// ... existing code ...
+  void _showSnackBar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: Duration(seconds: isError ? 4 : 2),
+      ),
+    );
+  }
 
   @override
   void dispose() {
     _mqttSub?.cancel();
     _deviceOnlineTimer?.cancel();
     _refreshTimeoutTimer?.cancel();
+    _fadeController.dispose();
+    _slideController.dispose();
     if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
       _mqttClient.disconnect();
     }
     super.dispose();
-  }
-
-  Future<void> _toggleLED(IoTProject project, String ledType, bool newState) async {
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      // Simulasi HTTP request ke ESP8266
-      final response = await http.post(
-        Uri.parse('http://${project.deviceIP}/control'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'led': ledType,
-          'state': newState,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          if (ledType == 'yellow') {
-            project.yellowLedStatus = newState;
-          } else if (ledType == 'green') {
-            project.greenLedStatus = newState;
-          } else if (ledType == 'white') {
-            project.whiteLedStatus = newState;
-          }
-          project.lastUpdate = DateTime.now();
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('LED $ledType berhasil ${newState ? "dinyalakan" : "dimatikan"}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal mengontrol LED: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
   }
 
   Future<void> _updateConfiguration(IoTProject project) async {
@@ -589,7 +917,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // Kirim konfigurasi baru ke ESP8266 sesuai handler /config
       final response = await http.post(
         Uri.parse('http://${project.deviceIP}/config'),
         headers: {'Content-Type': 'application/json'},
@@ -597,30 +924,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'wifiSSID': project.wifiSSID,
           'wifiPassword': project.wifiPassword,
           'serverUrl': project.serverUrl,
-          // Kirim mqttHost sesuai firmware ESP8266
           'mqttHost': project.mqttHost.isNotEmpty ? project.mqttHost : project.deviceIP,
           'mqttPort': project.mqttPort,
-          // Gunakan topik default yang sama dengan firmware
           'mqttTopicTemp': 'Anggra/sensor/suhu',
           'mqttTopicLedCtrl': 'Anggra/sensor/led_control',
         }),
       );
 
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Konfigurasi berhasil diperbarui'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        _showSnackBar('Konfigurasi berhasil diperbarui', isError: false);
+      } else {
+        _showSnackBar('Gagal memperbarui konfigurasi: HTTP ${response.statusCode}', isError: true);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memperbarui konfigurasi: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Error: $e', isError: true);
     } finally {
       setState(() {
         isLoading = false;
@@ -630,9 +947,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _setWifiConfig(IoTProject project, String ssid, String password) async {
     if (ssid.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SSID tidak boleh kosong')),
-      );
+      _showSnackBar('SSID tidak boleh kosong', isError: true);
       return;
     }
     setState(() {
@@ -654,18 +969,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           project.wifiSSID = ssid;
           project.wifiPassword = password;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WiFi config tersimpan. Reboot perangkat untuk menerapkan.')),
-        );
+        _showSnackBar('WiFi tersimpan. Restart perangkat untuk menerapkan.', isError: false);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal set WiFi: HTTP ${response.statusCode}')),
-        );
+        _showSnackBar('Gagal set WiFi: HTTP ${response.statusCode}', isError: true);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal set WiFi: $e')),
-      );
+      _showSnackBar('Error WiFi: $e', isError: true);
     } finally {
       setState(() {
         isLoading = false;
@@ -676,61 +985,196 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('IoT Dashboard'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-        actions: [
-          if (_isMqttConnected)
-            IconButton(
-              icon: const Icon(Icons.stop),
-              tooltip: 'Putuskan MQTT',
-              onPressed: _disconnectMQTT,
-            )
-          else
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                if (_isRefreshingMqtt)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 120,
+            pinned: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                FadeTransition(
+                                  opacity: _fadeController,
+                                  child: const Text(
+                                    'Smart IoT Dashboard',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 1),
+                                    end: Offset.zero,
+                                  ).animate(_slideController),
+                                  child: Text(
+                                    'Monitor dan kontrol perangkat IoT Anda',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: IconButton(
+                                icon: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    if (_isRefreshingMqtt)
+                                      const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    Icon(
+                                      _isMqttConnected ? Icons.cloud_done : Icons.cloud_off,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ],
+                                ),
+                                onPressed: _isRefreshingMqtt ? null : (_isMqttConnected ? _disconnectMQTT : _refreshMqttStatus),
+                                tooltip: _isMqttConnected ? 'Putuskan MQTT' : 'Hubungkan MQTT',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh MQTT',
-                  onPressed: _isRefreshingMqtt ? null : _refreshMqttStatus,
                 ),
-              ],
+              ),
             ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(20),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (isLoading) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  if (projects.isEmpty) {
+                    return Center(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 40),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.devices_other,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Belum ada perangkat',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tambahkan perangkat IoT pertama Anda',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final project = projects[index];
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: Offset(0, 0.3 + (index * 0.1)),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: _slideController,
+                      curve: Curves.easeOutCubic,
+                    )),
+                    child: FadeTransition(
+                      opacity: _fadeController,
+                      child: EnhancedProjectCard(
+                        project: project,
+                        onConfigUpdate: _updateConfiguration,
+                        onEdit: () => _showProjectDialog(project),
+                        temperatureText: _latestTemperatureText,
+                        isMqttConnected: _isMqttConnected,
+                        onSendLedCommand: _publishLedCommand,
+                        onSetWifi: _setWifiConfig,
+                      ),
+                    ),
+                  );
+                },
+                childCount: projects.isEmpty ? 1 : projects.length,
+              ),
+            ),
+          ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: projects.length,
-              itemBuilder: (context, index) {
-                final project = projects[index];
-                return ProjectCard(
-                  project: project,
-                  onLEDToggle: _toggleLED,
-                  onConfigUpdate: _updateConfiguration,
-                  onEdit: () => _showProjectDialog(project),
-                temperatureText: _latestTemperatureText,
-                isMqttConnected: _isMqttConnected,
-                onSendLedCommand: _publishLedCommand,
-                onSetWifi: _setWifiConfig,
-                );
-              },
+      floatingActionButton: ScaleTransition(
+        scale: _fadeController,
+        child: FloatingActionButton.extended(
+          onPressed: () => _showProjectDialog(null),
+          backgroundColor: const Color(0xFF667EEA),
+          elevation: 4,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            'Tambah Perangkat',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showProjectDialog(null),
-        child: const Icon(Icons.add),
+          ),
+        ),
       ),
     );
   }
@@ -738,7 +1182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showProjectDialog(IoTProject? project) {
     showDialog(
       context: context,
-      builder: (context) => ProjectDialog(
+      builder: (context) => EnhancedProjectDialog(
         project: project,
         onSave: (newProject) {
           setState(() {
@@ -762,50 +1206,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isRefreshingMqtt = true;
     });
     
-    // Cancel any existing timeout timer
     _refreshTimeoutTimer?.cancel();
-    
-    // Set up 5-second timeout timer
     _refreshTimeoutTimer = Timer(const Duration(seconds: 5), () {
       if (_isRefreshingMqtt && !_isMqttConnected) {
         _safeSetState(() {
           _isRefreshingMqtt = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Koneksi MQTT tidak terhubung - tidak ada tanggapan dalam 5 detik'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        _showSnackBar('Koneksi MQTT timeout', isError: true);
       }
     });
     
     try {
-      // Hindari flicker: jika sudah connected, jangan matikan indikator
       final alreadyConnected = _isMqttConnected && _mqttClient.connectionStatus?.state == MqttConnectionState.connected;
       if (alreadyConnected) {
         _refreshTimeoutTimer?.cancel();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('MQTT sudah terhubung')),
-        );
+        _showSnackBar('MQTT sudah terhubung', isError: false);
         return;
       }
 
-      // Jika OFF, coba koneksi tanpa mereset teks/status agar tidak berkedip
       try { await _mqttSub?.cancel(); } catch (_) {}
       if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
         _mqttClient.disconnect();
       }
       await _connectMQTT();
 
-      // Cancel timeout timer if connection was successful
       _refreshTimeoutTimer?.cancel();
       
       if (!_isMqttConnected) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('MQTT tidak terhubung')),
-        );
+        _showSnackBar('MQTT tidak terhubung', isError: true);
       }
     } finally {
       _safeSetState(() {
@@ -828,22 +1256,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class ProjectCard extends StatelessWidget {
+class EnhancedProjectCard extends StatefulWidget {
   final IoTProject project;
-  final Function(IoTProject, String, bool) onLEDToggle;
   final Function(IoTProject) onConfigUpdate;
   final VoidCallback onEdit;
   final String temperatureText;
   final bool isMqttConnected;
   final void Function(String) onSendLedCommand;
   final Future<void> Function(IoTProject, String, String) onSetWifi;
-  
-  // Allow external online indicator via project.isOnline
 
-  const ProjectCard({
+  const EnhancedProjectCard({
     Key? key,
     required this.project,
-    required this.onLEDToggle,
     required this.onConfigUpdate,
     required this.onEdit,
     required this.temperatureText,
@@ -853,348 +1277,407 @@ class ProjectCard extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<EnhancedProjectCard> createState() => _EnhancedProjectCardState();
+}
+
+class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerProviderStateMixin {
+  bool _isExpanded = false;
+  late AnimationController _expandController;
+  late AnimationController _buttonController;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _buttonController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _expandController.dispose();
+    _buttonController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        project.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        project.description,
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  children: [
-                    Chip(
-                      avatar: CircleAvatar(
-                        backgroundColor: project.isOnline ? Colors.green : Colors.red,
-                        radius: 6,
-                      ),
-                      label: Text(project.isOnline ? 'Online' : 'Offline'),
-                      backgroundColor: project.isOnline ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.settings),
-                      onPressed: onEdit,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Device Info
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
+      margin: const EdgeInsets.only(bottom: 20),
+      elevation: 8,
+      shadowColor: Colors.black12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white,
+              Colors.grey[50]!,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 20),
+              _buildDeviceInfo(),
+              const SizedBox(height: 16),
+              _WifiConfigSection(project: widget.project, onSetWifi: widget.onSetWifi),
+              const SizedBox(height: 16),
+              _TemperatureDisplay(
+                text: widget.temperatureText,
+                isMqttConnected: widget.isMqttConnected,
+                lastTemperature: widget.project.lastTemperature,
+                lastUpdate: widget.project.lastUpdate,
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.device_hub, size: 20),
-                  const SizedBox(width: 8),
-                  Text('IP: ${project.deviceIP}'),
-                  const Spacer(),
-                  Text(
-                    'Update: ${_formatDateTime(project.lastUpdate)}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            // WiFi Config Section under IP card
-            _WifiConfigSection(project: project, onSetWifi: onSetWifi),
-
-            const SizedBox(height: 16),
-            // Temperature from MQTT and DHT22
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.thermostat, size: 22, color: Colors.orange),
-                      const SizedBox(width: 8),
-                      Expanded(child: _TemperatureText(text: temperatureText)),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isMqttConnected ? Colors.green : Colors.red,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(isMqttConnected ? Icons.cloud_done : Icons.cloud_off, size: 14, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text(
-                              isMqttConnected ? 'MQTT ON' : 'MQTT OFF',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (project.lastTemperature != null) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.sensors, size: 16, color: Colors.orange.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Suhu Terakhir: ${project.lastTemperature!.toStringAsFixed(1)}°C',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _formatDateTime(project.lastUpdate),
-                          style: TextStyle(color: Colors.orange.shade700, fontSize: 11),
-                        )
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            
-            // LED Controls
-            const Text(
-              'Kontrol LED ESP8266',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            
-            // Basic Controls
-            const Text(
-              'Kontrol Dasar:',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('ON'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                  child: const Text('ON'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('OFF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade700, foregroundColor: Colors.white),
-                  child: const Text('OFF'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('ALL_ON'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                  child: const Text('ALL ON'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('ALL_OFF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                  child: const Text('ALL OFF'),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Blink Controls
-            const Text(
-              'Kontrol Blink:',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('BLINK_SLOW'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.white),
-                  child: const Text('BLINK SLOW'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('BLINK_MEDIUM'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-                  child: const Text('BLINK MEDIUM'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('BLINK_FAST'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                  child: const Text('BLINK FAST'),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Individual LED Controls
-            const Text(
-              'Kontrol Individual:',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('YELLOW_ON'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow.shade700, foregroundColor: Colors.white),
-                  child: const Text('YELLOW ON'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('YELLOW_OFF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade600, foregroundColor: Colors.white),
-                  child: const Text('YELLOW OFF'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('GREEN_ON'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
-                  child: const Text('GREEN ON'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('GREEN_OFF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade600, foregroundColor: Colors.white),
-                  child: const Text('GREEN OFF'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('WHITE_ON'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade800, foregroundColor: Colors.white),
-                  child: const Text('WHITE ON'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('WHITE_OFF'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade600, foregroundColor: Colors.white),
-                  child: const Text('WHITE OFF'),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Advanced Controls
-            const Text(
-              'Kontrol Lanjutan:',
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('SEQUENCE'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white),
-                  child: const Text('SEQUENCE'),
-                ),
-                ElevatedButton(
-                  onPressed: () => onSendLedCommand('WAVE'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-                  child: const Text('WAVE'),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Config Update Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => onConfigUpdate(project),
-                icon: const Icon(Icons.upload),
-                label: const Text('Update Konfigurasi'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade600,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              _buildControlsHeader(),
+              const SizedBox(height: 16),
+              _buildControls(),
+              const SizedBox(height: 20),
+              _buildConfigButton(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLEDControl(String label, bool isOn, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isOn ? color.withOpacity(0.2) : Colors.grey.shade100,
-          border: Border.all(
-            color: isOn ? color : Colors.grey.shade300,
-            width: 2,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.lightbulb,
-              color: isOn ? color : Colors.grey,
-              size: 32,
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: isOn ? color : Colors.grey,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.memory, color: Colors.white, size: 24),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.project.name,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.project.description,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: widget.project.isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PulsingDot(
+                    color: Colors.white,
+                    isActive: widget.project.isOnline,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.project.isOnline ? 'Online' : 'Offline',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              isOn ? 'ON' : 'OFF',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: isOn ? color : Colors.grey,
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: widget.onEdit,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.grey[100],
+                foregroundColor: Colors.grey[600],
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeviceInfo() {
+    return GlassContainer(
+      color: Colors.blue[50]!.withOpacity(0.5),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.router, color: Color(0xFF3B82F6), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Informasi Perangkat',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'IP: ${widget.project.deviceIP}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            _formatDateTime(widget.project.lastUpdate),
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlsHeader() {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFBF00).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.lightbulb_outline, color: Color(0xFFFFBF00), size: 20),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            'Kontrol LED Smart',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () {
+            setState(() {
+              _isExpanded = !_isExpanded;
+              if (_isExpanded) {
+                _expandController.forward();
+              } else {
+                _expandController.reverse();
+              }
+            });
+          },
+          icon: AnimatedRotation(
+            turns: _isExpanded ? 0.5 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: const Icon(Icons.keyboard_arrow_down),
+          ),
+          label: Text(_isExpanded ? 'Sembunyikan' : 'Tampilkan'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControls() {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      child: _isExpanded ? _buildExpandedControls() : _buildBasicControls(),
+    );
+  }
+
+  Widget _buildBasicControls() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _buildControlButton('ON', 'Aktifkan', const Color(0xFF10B981), Icons.power_settings_new),
+        _buildControlButton('OFF', 'Matikan', const Color(0xFFEF4444), Icons.power_off),
+        _buildControlButton('ALL_ON', 'Semua Hidup', const Color(0xFF3B82F6), Icons.lightbulb),
+        _buildControlButton('ALL_OFF', 'Semua Mati', Colors.grey[600]!, Icons.lightbulb_outline),
+      ],
+    );
+  }
+
+  Widget _buildExpandedControls() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBasicControls(),
+        const SizedBox(height: 16),
+        _buildSectionTitle('Mode Blink', Icons.flash_on),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _buildControlButton('BLINK_SLOW', 'Lambat', const Color(0xFFFBBF24), Icons.speed),
+            _buildControlButton('BLINK_MEDIUM', 'Sedang', const Color(0xFFEA580C), Icons.speed),
+            _buildControlButton('BLINK_FAST', 'Cepat', const Color(0xFFDC2626), Icons.speed),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSectionTitle('Kontrol Individual', Icons.tune),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _buildControlButton('YELLOW_ON', 'Kuning ON', const Color(0xFFEAB308), Icons.circle),
+            _buildControlButton('YELLOW_OFF', 'Kuning OFF', Colors.grey[400]!, Icons.circle_outlined),
+            _buildControlButton('GREEN_ON', 'Hijau ON', const Color(0xFF22C55E), Icons.circle),
+            _buildControlButton('GREEN_OFF', 'Hijau OFF', Colors.grey[400]!, Icons.circle_outlined),
+            _buildControlButton('WHITE_ON', 'Putih ON', Colors.grey[800]!, Icons.circle),
+            _buildControlButton('WHITE_OFF', 'Putih OFF', Colors.grey[400]!, Icons.circle_outlined),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSectionTitle('Mode Lanjutan', Icons.auto_awesome),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _buildControlButton('SEQUENCE', 'Sekuensial', const Color(0xFF8B5CF6), Icons.shuffle),
+            _buildControlButton('WAVE', 'Gelombang', const Color(0xFF06B6D4), Icons.water),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlButton(String command, String label, Color color, IconData icon) {
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      shadowColor: color.withOpacity(0.3),
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onSendLedCommand(command);
+          
+          _buttonController.forward().then((_) {
+            _buttonController.reverse();
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedScale(
+          scale: 1.0,
+          duration: const Duration(milliseconds: 100),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfigButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () => widget.onConfigUpdate(widget.project),
+        icon: const Icon(Icons.upload_outlined),
+        label: const Text('Update Konfigurasi Perangkat'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF667EEA),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
         ),
       ),
     );
@@ -1207,30 +1690,30 @@ class ProjectCard extends StatelessWidget {
     if (difference.inMinutes < 1) {
       return 'Baru saja';
     } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m yang lalu';
+      return '${difference.inMinutes}m lalu';
     } else if (difference.inHours < 24) {
-      return '${difference.inHours}h yang lalu';
+      return '${difference.inHours}j lalu';
     } else {
-      return '${difference.inDays}d yang lalu';
+      return '${difference.inDays}h lalu';
     }
   }
 }
 
-class ProjectDialog extends StatefulWidget {
+class EnhancedProjectDialog extends StatefulWidget {
   final IoTProject? project;
   final Function(IoTProject) onSave;
 
-  const ProjectDialog({
+  const EnhancedProjectDialog({
     Key? key,
     this.project,
     required this.onSave,
   }) : super(key: key);
 
   @override
-  State<ProjectDialog> createState() => _ProjectDialogState();
+  State<EnhancedProjectDialog> createState() => _EnhancedProjectDialogState();
 }
 
-class _ProjectDialogState extends State<ProjectDialog> {
+class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
@@ -1253,95 +1736,195 @@ class _ProjectDialogState extends State<ProjectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.project == null ? 'Tambah Project Baru' : 'Edit Project'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Project',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) =>
-                      value?.isEmpty == true ? 'Nama project wajib diisi' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Deskripsi',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _deviceIPController,
-                  decoration: const InputDecoration(
-                    labelText: 'Host',
-                    hintText: 'contoh: test.mosquitto.org atau 10.210.102.180',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) =>
-                      value?.isEmpty == true ? 'Host wajib diisi' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _mqttHostController,
-                  decoration: const InputDecoration(
-                    labelText: 'MQTT Host (broker)'
-                    ,
-                    hintText: 'contoh: test.mosquitto.org atau IP broker',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _mqttPortController,
-                  decoration: const InputDecoration(
-                    labelText: 'MQTT Port',
-                    hintText: 'contoh: 1883',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Port wajib diisi';
-                    final port = int.tryParse(value);
-                    if (port == null || port < 1 || port > 65535) return 'Port tidak valid';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _serverUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL (Pengiriman Data)',
-                    hintText: 'contoh: http://10.210.102.180/display_data.php',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: [Colors.white, Colors.grey[50]!],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.settings, color: Colors.white, size: 24),
+                  const SizedBox(width: 12),
+                  Text(
+                    widget.project == null ? 'Tambah Perangkat Baru' : 'Edit Perangkat',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            // Form Content
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildFormField(
+                        controller: _nameController,
+                        label: 'Nama Perangkat',
+                        icon: Icons.device_hub,
+                        validator: (value) => value?.isEmpty == true ? 'Nama wajib diisi' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildFormField(
+                        controller: _descriptionController,
+                        label: 'Deskripsi',
+                        icon: Icons.description,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildFormField(
+                        controller: _deviceIPController,
+                        label: 'IP Address / Host',
+                        icon: Icons.router,
+                        hint: 'contoh: 192.168.1.100 atau domain.com',
+                        validator: (value) => value?.isEmpty == true ? 'IP/Host wajib diisi' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildFormField(
+                        controller: _mqttHostController,
+                        label: 'MQTT Broker Host',
+                        icon: Icons.cloud,
+                        hint: 'contoh: test.mosquitto.org',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildFormField(
+                        controller: _mqttPortController,
+                        label: 'MQTT Port',
+                        icon: Icons.settings_ethernet,
+                        hint: 'default: 1883',
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Port wajib diisi';
+                          final port = int.tryParse(value);
+                          if (port == null || port < 1 || port > 65535) return 'Port tidak valid (1-65535)';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      _buildFormField(
+                        controller: _serverUrlController,
+                        label: 'Server URL (Optional)',
+                        icon: Icons.link,
+                        hint: 'contoh: http://server.com/api/data',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Action Buttons
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      child: const Text(
+                        'Batal',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: _saveProject,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF667EEA),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 2,
+                      ),
+                      child: const Text(
+                        'Simpan Perangkat',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Batal'),
+    );
+  }
+
+  Widget _buildFormField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hint,
+    TextInputType? keyboardType,
+    int? maxLines,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
         ),
-        ElevatedButton(
-          onPressed: _saveProject,
-          child: const Text('Simpan'),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
         ),
-      ],
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF667EEA), width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+      ),
+      keyboardType: keyboardType,
+      maxLines: maxLines ?? 1,
+      validator: validator,
     );
   }
 
@@ -1349,11 +1932,11 @@ class _ProjectDialogState extends State<ProjectDialog> {
     if (_formKey.currentState?.validate() == true) {
       final project = IoTProject(
         id: widget.project?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _nameController.text,
-        description: _descriptionController.text,
-        deviceIP: _deviceIPController.text,
-        mqttHost: _mqttHostController.text.isNotEmpty ? _mqttHostController.text : 'test.mosquitto.org',
-        serverUrl: _serverUrlController.text,
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        deviceIP: _deviceIPController.text.trim(),
+        mqttHost: _mqttHostController.text.trim().isNotEmpty ? _mqttHostController.text.trim() : 'test.mosquitto.org',
+        serverUrl: _serverUrlController.text.trim(),
         mqttPort: int.tryParse(_mqttPortController.text) ?? 1883,
         wifiSSID: widget.project?.wifiSSID ?? '',
         wifiPassword: widget.project?.wifiPassword ?? '',
@@ -1368,6 +1951,22 @@ class _ProjectDialogState extends State<ProjectDialog> {
 
       widget.onSave(project);
       Navigator.of(context).pop();
+      
+      // Show success feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(widget.project == null ? 'Perangkat berhasil ditambahkan' : 'Perangkat berhasil diperbarui'),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
