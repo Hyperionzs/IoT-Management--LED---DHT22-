@@ -223,6 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _lastTempRaw = '';
   int _lastTempSetStateMs = 0;
   Timer? _deviceOnlineTimer;
+  Timer? _refreshTimeoutTimer;
 
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
@@ -526,6 +527,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _mqttSub?.cancel();
     _deviceOnlineTimer?.cancel();
+    _refreshTimeoutTimer?.cancel();
     if (_mqttClient.connectionStatus?.state == MqttConnectionState.connected) {
       _mqttClient.disconnect();
     }
@@ -759,10 +761,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _safeSetState(() {
       _isRefreshingMqtt = true;
     });
+    
+    // Cancel any existing timeout timer
+    _refreshTimeoutTimer?.cancel();
+    
+    // Set up 5-second timeout timer
+    _refreshTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (_isRefreshingMqtt && !_isMqttConnected) {
+        _safeSetState(() {
+          _isRefreshingMqtt = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Koneksi MQTT tidak terhubung - tidak ada tanggapan dalam 5 detik'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+    
     try {
       // Hindari flicker: jika sudah connected, jangan matikan indikator
       final alreadyConnected = _isMqttConnected && _mqttClient.connectionStatus?.state == MqttConnectionState.connected;
       if (alreadyConnected) {
+        _refreshTimeoutTimer?.cancel();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('MQTT sudah terhubung')),
         );
@@ -776,6 +799,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       await _connectMQTT();
 
+      // Cancel timeout timer if connection was successful
+      _refreshTimeoutTimer?.cancel();
+      
       if (!_isMqttConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('MQTT tidak terhubung')),
@@ -1212,9 +1238,6 @@ class _ProjectDialogState extends State<ProjectDialog> {
   late TextEditingController _mqttHostController;
   late TextEditingController _mqttPortController;
   late TextEditingController _serverUrlController;
-  late TextEditingController _wifiSSIDController;
-  late TextEditingController _wifiPasswordController;
-  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -1226,8 +1249,6 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _mqttHostController = TextEditingController(text: project?.mqttHost ?? 'test.mosquitto.org');
     _mqttPortController = TextEditingController(text: (project?.mqttPort ?? 1883).toString());
     _serverUrlController = TextEditingController(text: project?.serverUrl ?? '');
-    _wifiSSIDController = TextEditingController(text: project?.wifiSSID ?? '');
-    _wifiPasswordController = TextEditingController(text: project?.wifiPassword ?? '');
   }
 
   @override
@@ -1306,31 +1327,6 @@ class _ProjectDialogState extends State<ProjectDialog> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _wifiSSIDController,
-                  decoration: const InputDecoration(
-                    labelText: 'WiFi SSID',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _wifiPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'WiFi Password',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
-                    ),
-                  ),
-                  obscureText: _obscurePassword,
-                ),
               ],
             ),
           ),
@@ -1359,8 +1355,8 @@ class _ProjectDialogState extends State<ProjectDialog> {
         mqttHost: _mqttHostController.text.isNotEmpty ? _mqttHostController.text : 'test.mosquitto.org',
         serverUrl: _serverUrlController.text,
         mqttPort: int.tryParse(_mqttPortController.text) ?? 1883,
-        wifiSSID: _wifiSSIDController.text,
-        wifiPassword: _wifiPasswordController.text,
+        wifiSSID: widget.project?.wifiSSID ?? '',
+        wifiPassword: widget.project?.wifiPassword ?? '',
         yellowLedStatus: widget.project?.yellowLedStatus ?? false,
         greenLedStatus: widget.project?.greenLedStatus ?? false,
         whiteLedStatus: widget.project?.whiteLedStatus ?? false,
@@ -1383,8 +1379,6 @@ class _ProjectDialogState extends State<ProjectDialog> {
     _mqttHostController.dispose();
     _mqttPortController.dispose();
     _serverUrlController.dispose();
-    _wifiSSIDController.dispose();
-    _wifiPasswordController.dispose();
     super.dispose();
   }
 }
