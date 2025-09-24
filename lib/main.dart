@@ -99,6 +99,8 @@ class AnimatedCounter extends StatelessWidget {
               fontWeight: FontWeight.bold,
               color: color,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           Text(
             label,
@@ -107,6 +109,8 @@ class AnimatedCounter extends StatelessWidget {
               color: Colors.grey[600],
               fontWeight: FontWeight.w500,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -300,6 +304,8 @@ class _WifiConfigSectionState extends State<_WifiConfigSection> with TickerProvi
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   AnimatedRotation(
@@ -325,48 +331,55 @@ class _WifiConfigSectionState extends State<_WifiConfigSection> with TickerProvi
       padding: const EdgeInsets.only(top: 16),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  controller: _ssidCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'SSID WiFi',
-                    prefixIcon: Icon(Icons.router),
-                  ),
-                ),
+          // SSID Field - Full Width
+          TextFormField(
+            controller: _ssidCtrl,
+            decoration: const InputDecoration(
+              labelText: 'SSID WiFi',
+              prefixIcon: Icon(Icons.router),
+              hintText: 'Masukkan nama jaringan WiFi',
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Password Field - Full Width
+          TextFormField(
+            controller: _passCtrl,
+            decoration: InputDecoration(
+              labelText: 'Password WiFi',
+              prefixIcon: const Icon(Icons.lock),
+              hintText: 'Masukkan password WiFi',
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscure = !_obscure),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  controller: _passCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                  obscureText: _obscure,
-                ),
+            ),
+            obscureText: _obscure,
+          ),
+          const SizedBox(height: 20),
+          // Save Button - Full Width
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                widget.onSetWifi(widget.project, _ssidCtrl.text.trim(), _passCtrl.text);
+              },
+              icon: const Icon(Icons.save),
+              label: const Text(
+                'Simpan Konfigurasi WiFi',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  widget.onSetWifi(widget.project, _ssidCtrl.text.trim(), _passCtrl.text);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6366F1),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text('Simpan', style: TextStyle(fontWeight: FontWeight.w600)),
+                elevation: 2,
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -428,6 +441,8 @@ class _TemperatureDisplay extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFFF6B35),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -463,6 +478,8 @@ class _TemperatureDisplay extends StatelessWidget {
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -489,6 +506,8 @@ class _TemperatureDisplay extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: Color(0xFFFF6B35),
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
                   Text(
@@ -498,6 +517,8 @@ class _TemperatureDisplay extends StatelessWidget {
                       color: Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -673,7 +694,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           yellowLedStatus: false,
           greenLedStatus: false,
           whiteLedStatus: false,
-          lastTemperature: 28.5,
+          lastTemperature: null,
           lastLedMode: 'OFF',
           lastUpdate: DateTime.now().subtract(const Duration(minutes: 5)),
           isOnline: true,
@@ -777,7 +798,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   : double.tryParse('${jsonData['temperature']}');
               final String ledStatus = '${jsonData['ledStatus'] ?? 'N/A'}';
               final String mode = '${jsonData['mode'] ?? 'N/A'}';
-              final String time = '${jsonData['timestamp'] ?? 'N/A'}';
               
               displayText = 'Suhu: ${temperature?.toStringAsFixed(1) ?? 'N/A'}°C | LED: $ledStatus | Mode: $mode';
 
@@ -887,7 +907,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               color: Colors.white,
             ),
             const SizedBox(width: 8),
-            Expanded(child: Text(message)),
+            Expanded(
+              child: Text(
+                message,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         backgroundColor: isError ? const Color(0xFFEF4444) : const Color(0xFF10B981),
@@ -1023,6 +1049,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 SlideTransition(
@@ -1037,6 +1065,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                       color: Colors.white.withOpacity(0.9),
                                       fontWeight: FontWeight.w500,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -1118,6 +1148,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                               fontWeight: FontWeight.w600,
                               color: Colors.grey[600],
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -1125,6 +1157,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                             style: TextStyle(
                               color: Colors.grey[500],
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
@@ -1173,6 +1208,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               color: Colors.white,
               fontWeight: FontWeight.w600,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -1379,6 +1416,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1E293B),
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               Text(
@@ -1388,6 +1427,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1415,6 +1456,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -1455,15 +1498,19 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
                 const Text(
                   'Informasi Perangkat',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'IP: ${widget.project.deviceIP}',
+                  'IP ESP: ${widget.project.deviceIP}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 13,
                     fontFamily: 'monospace',
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -1475,6 +1522,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -1501,6 +1550,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
               fontSize: 16,
               color: Color(0xFF1E293B),
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         TextButton.icon(
@@ -1519,7 +1570,11 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
             duration: const Duration(milliseconds: 300),
             child: const Icon(Icons.keyboard_arrow_down),
           ),
-          label: Text(_isExpanded ? 'Sembunyikan' : 'Tampilkan'),
+          label: Text(
+            _isExpanded ? 'Sembunyikan' : 'Tampilkan',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -1604,6 +1659,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
             fontSize: 14,
             color: Colors.grey[700],
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -1656,6 +1713,8 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -1671,7 +1730,11 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
       child: ElevatedButton.icon(
         onPressed: () => widget.onConfigUpdate(widget.project),
         icon: const Icon(Icons.upload_outlined),
-        label: const Text('Update Konfigurasi Perangkat'),
+        label: const Text(
+          'Update Konfigurasi Perangkat',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF667EEA),
           foregroundColor: Colors.white,
@@ -1767,12 +1830,16 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                 children: [
                   const Icon(Icons.settings, color: Colors.white, size: 24),
                   const SizedBox(width: 12),
-                  Text(
-                    widget.project == null ? 'Tambah Perangkat Baru' : 'Edit Perangkat',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Expanded(
+                    child: Text(
+                      widget.project == null ? 'Tambah Perangkat Baru' : 'Edit Perangkat',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const Spacer(),
@@ -1808,7 +1875,7 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                       const SizedBox(height: 16),
                       _buildFormField(
                         controller: _deviceIPController,
-                        label: 'IP Address / Host',
+                        label: 'IP Address / Host (ESP)',
                         icon: Icons.router,
                         hint: 'contoh: 192.168.1.100 atau domain.com',
                         validator: (value) => value?.isEmpty == true ? 'IP/Host wajib diisi' : null,
@@ -1837,7 +1904,7 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                       const SizedBox(height: 16),
                       _buildFormField(
                         controller: _serverUrlController,
-                        label: 'Server URL (Optional)',
+                        label: 'Server URL (Pengiriman Data)',
                         icon: Icons.link,
                         hint: 'contoh: http://server.com/api/data',
                       ),
@@ -1862,6 +1929,8 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                       child: const Text(
                         'Batal',
                         style: TextStyle(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
@@ -1880,6 +1949,8 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                       child: const Text(
                         'Simpan Perangkat',
                         style: TextStyle(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
@@ -1959,7 +2030,11 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
             children: [
               const Icon(Icons.check_circle_outline, color: Colors.white),
               const SizedBox(width: 8),
-              Text(widget.project == null ? 'Perangkat berhasil ditambahkan' : 'Perangkat berhasil diperbarui'),
+              Text(
+                widget.project == null ? 'Perangkat berhasil ditambahkan' : 'Perangkat berhasil diperbarui',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
           backgroundColor: const Color(0xFF10B981),
