@@ -190,6 +190,133 @@ class _PulsingDotState extends State<PulsingDot> with TickerProviderStateMixin {
   }
 }
 
+class ExpandableText extends StatefulWidget {
+  final String text;
+  final int maxLines;
+  final TextStyle? style;
+  final String? expandText;
+  final String? collapseText;
+
+  const ExpandableText({
+    Key? key,
+    required this.text,
+    this.maxLines = 2,
+    this.style,
+    this.expandText = 'Lihat lebih banyak',
+    this.collapseText = 'Lihat lebih sedikit',
+  }) : super(key: key);
+
+  @override
+  State<ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<ExpandableText> with TickerProviderStateMixin {
+  bool _isExpanded = false;
+  late AnimationController _animationController;
+  late Animation<double> _expandAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _expandAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  bool get _shouldShowExpandButton {
+    // Show expand button if text is longer than what fits in maxLines
+    final textPainter = TextPainter(
+      text: TextSpan(text: widget.text, style: widget.style),
+      maxLines: widget.maxLines,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    return textPainter.didExceedMaxLines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedBuilder(
+          animation: _expandAnimation,
+          builder: (context, child) {
+            return Text(
+              widget.text,
+              style: widget.style,
+              maxLines: _isExpanded ? null : widget.maxLines,
+              overflow: _isExpanded ? null : TextOverflow.ellipsis,
+            );
+          },
+        ),
+        if (_shouldShowExpandButton)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _isExpanded = !_isExpanded;
+                  if (_isExpanded) {
+                    _animationController.forward();
+                  } else {
+                    _animationController.reverse();
+                  }
+                });
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context).primaryColor.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(
+                        Icons.keyboard_arrow_down,
+                        size: 16,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isExpanded ? widget.collapseText! : widget.expandText!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final Color? color;
@@ -445,15 +572,14 @@ class _TemperatureDisplay extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        text,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                       ExpandableText(
+                         text: text,
+                         maxLines: 2,
+                         style: const TextStyle(
+                           fontSize: 14,
+                           fontWeight: FontWeight.w500,
+                         ),
+                       ),
                     ],
                   ),
                 ),
@@ -1115,53 +1241,59 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   if (isLoading) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child: CircularProgressIndicator(),
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 900),
+                        child: const Padding(
+                          padding: EdgeInsets.all(40),
+                          child: CircularProgressIndicator(),
+                        ),
                       ),
                     );
                   }
 
                   if (projects.isEmpty) {
                     return Center(
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 40),
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              shape: BoxShape.circle,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 900),
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 40),
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.devices_other,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
                             ),
-                            child: Icon(
-                              Icons.devices_other,
-                              size: 48,
-                              color: Colors.grey[400],
+                            const SizedBox(height: 16),
+                            Text(
+                              'Belum ada perangkat',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Belum ada perangkat',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tambahkan perangkat IoT pertama Anda',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Tambahkan perangkat IoT pertama Anda',
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   }
@@ -1177,14 +1309,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                     )),
                     child: FadeTransition(
                       opacity: _fadeController,
-                      child: EnhancedProjectCard(
-                        project: project,
-                        onConfigUpdate: _updateConfiguration,
-                        onEdit: () => _showProjectDialog(project),
-                        temperatureText: _latestTemperatureText,
-                        isMqttConnected: _isMqttConnected,
-                        onSendLedCommand: _publishLedCommand,
-                        onSetWifi: _setWifiConfig,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: EnhancedProjectCard(
+                            project: project,
+                            onConfigUpdate: _updateConfiguration,
+                            onEdit: () => _showProjectDialog(project),
+                            temperatureText: _latestTemperatureText,
+                            isMqttConnected: _isMqttConnected,
+                            onSendLedCommand: _publishLedCommand,
+                            onSetWifi: _setWifiConfig,
+                          ),
+                        ),
                       ),
                     ),
                   );
@@ -1409,70 +1546,36 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                widget.project.name,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.project.description,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+               ExpandableText(
+                 text: widget.project.name,
+                 maxLines: 1,
+                 style: const TextStyle(
+                   fontSize: 20,
+                   fontWeight: FontWeight.bold,
+                   color: Color(0xFF1E293B),
+                 ),
+               ),
+               const SizedBox(height: 4),
+               ExpandableText(
+                 text: widget.project.description,
+                 maxLines: 2,
+                 style: TextStyle(
+                   color: Colors.grey[600],
+                   fontSize: 14,
+                   fontWeight: FontWeight.w500,
+                 ),
+               ),
             ],
           ),
         ),
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: widget.project.isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PulsingDot(
-                    color: Colors.white,
-                    isActive: widget.project.isOnline,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.project.isOnline ? 'Online' : 'Offline',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: widget.onEdit,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.grey[100],
-                foregroundColor: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
+         IconButton(
+           icon: const Icon(Icons.settings_outlined),
+           onPressed: widget.onEdit,
+           style: IconButton.styleFrom(
+             backgroundColor: Colors.grey[100],
+             foregroundColor: Colors.grey[600],
+           ),
+         ),
       ],
     );
   }
@@ -1592,10 +1695,10 @@ class _EnhancedProjectCardState extends State<EnhancedProjectCard> with TickerPr
       spacing: 12,
       runSpacing: 12,
       children: [
-        _buildControlButton('ON', 'Aktifkan', const Color(0xFF10B981), Icons.power_settings_new),
-        _buildControlButton('OFF', 'Matikan', const Color(0xFFEF4444), Icons.power_off),
-        _buildControlButton('ALL_ON', 'Semua Hidup', const Color(0xFF3B82F6), Icons.lightbulb),
-        _buildControlButton('ALL_OFF', 'Semua Mati', Colors.grey[600]!, Icons.lightbulb_outline),
+        _buildControlButton('ON', 'Aktifkan Pembacaan Suhu', const Color(0xFF10B981), Icons.power_settings_new),
+        _buildControlButton('OFF', 'Matikan Pembacaan Suhu', const Color(0xFFEF4444), Icons.power_off),
+        _buildControlButton('ALL_ON', 'Hidupkan Semua LED', const Color(0xFF3B82F6), Icons.lightbulb),
+        _buildControlButton('ALL_OFF', 'Matikan Semua LED', Colors.grey[600]!, Icons.lightbulb_outline),
       ],
     );
   }
@@ -1832,21 +1935,17 @@ class _EnhancedProjectDialogState extends State<EnhancedProjectDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      widget.project == null ? 'Tambah Perangkat Baru' : 'Edit Perangkat',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    widget.project == null ? 'Tambah Perangkat Baru' : 'Edit Perangkat',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                   const Spacer(),
                 ],
               ),
             ),
