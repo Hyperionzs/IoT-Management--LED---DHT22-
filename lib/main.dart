@@ -230,6 +230,9 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   RawDatagramSocket? _udpSocket;
+  // WiFi status info
+  String? _currentWifiSSID;
+  int? _wifiSignalStrength;
 
   @override
   void initState() {
@@ -276,6 +279,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                 }
                 _isDeviceOnline = true;
               });
+              
+              // Update WiFi status when device is discovered
+              if (data['ip'] != null) {
+                _getCurrentWifiStatus(data['ip']);
+              }
             }
           } catch (_) {}
         }
@@ -303,6 +311,29 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
           projects.first.serverUrl = info['serverUrl'] ?? '';
         });
       }
+      
+      // Get current WiFi status
+      await _getCurrentWifiStatus(espIP);
+    }
+  }
+
+  Future<void> _getCurrentWifiStatus(String deviceIP) async {
+    try {
+      var response = await http
+          .get(
+            Uri.parse('http://$deviceIP/wifi_status'),
+          )
+          .timeout(const Duration(seconds: 3));
+      
+      if (response.statusCode == 200) {
+        var data = json.decode(response.body);
+        setState(() {
+          _currentWifiSSID = data['ssid'] ?? 'Unknown';
+          _wifiSignalStrength = data['rssi']?.toInt();
+        });
+      }
+    } catch (e) {
+      print('Error getting WiFi status: $e');
     }
   }
 
@@ -423,6 +454,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         }
         projects.first.lastUpdate = DateTime.now();
       });
+      
+      // Update WiFi status periodically when device is online
+      if (projects.isNotEmpty && projects.first.deviceIP != null) {
+        _getCurrentWifiStatus(projects.first.deviceIP!);
+      }
     }
   }
 
@@ -515,6 +551,8 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 _buildProjectCard(),
+                const SizedBox(height: 20),
+                _buildWifiInfoCard(),
                 const SizedBox(height: 20),
                 _buildControlPanel(),
                 const SizedBox(height: 20),
@@ -666,6 +704,158 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   }
 
   Widget _buildInfoRow(String label, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWifiInfoCard() {
+    if (projects.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final project = projects.first;
+    final isConnected = project.isOnline && project.deviceIP != null;
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isConnected ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.wifi,
+                    color: isConnected ? Colors.green : Colors.red,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'WiFi Connection',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isConnected ? 'Connected to ESP8266' : 'Not connected',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isConnected)
+                  IconButton(
+                    onPressed: () {
+                      if (projects.isNotEmpty && projects.first.deviceIP != null) {
+                        _getCurrentWifiStatus(projects.first.deviceIP!);
+                      }
+                    },
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh WiFi Status',
+                  ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isConnected ? Colors.green : Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isConnected ? 'Connected' : 'Disconnected',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (isConnected) ...[
+              _buildWifiInfoRow('WiFi SSID', _currentWifiSSID ?? project.wifiSSID),
+              const SizedBox(height: 8),
+              if (project.deviceIP != null) ...[
+                _buildWifiInfoRow('Device IP', project.deviceIP!),
+                const SizedBox(height: 8),
+              ],
+              if (_wifiSignalStrength != null) ...[
+                _buildWifiInfoRow('Signal Strength', '${_wifiSignalStrength} dBm'),
+                const SizedBox(height: 8),
+              ],
+              _buildWifiInfoRow('Connection Status', 'Active'),
+              const SizedBox(height: 8),
+              _buildWifiInfoRow('Last Update', _formatDateTime(project.lastUpdate)),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ESP8266 device is not connected. Use Auto-Discovery to find the device.',
+                        style: TextStyle(
+                          color: Colors.orange[700],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWifiInfoRow(String label, String value) {
     return Row(
       children: [
         SizedBox(
@@ -961,6 +1151,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
 
         // After reboot, wait and auto-scan for the device on new network
         await _waitForDeviceAfterReboot();
+        
+        // Get updated WiFi status after reboot
+        if (projects.isNotEmpty && projects.first.deviceIP != null) {
+          await _getCurrentWifiStatus(projects.first.deviceIP!);
+        }
       } else if (res.statusCode == 422) {
         final body = res.body.isNotEmpty ? res.body : '{"reason":"Invalid"}';
         try {
@@ -1001,6 +1196,10 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         projects.first.deviceIP = newIP;
         projects.first.isOnline = true;
       });
+      
+      // Get WiFi status after device reconnects
+      await _getCurrentWifiStatus(newIP);
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Perangkat terdeteksi kembali di: $newIP'), backgroundColor: Colors.green),
       );
