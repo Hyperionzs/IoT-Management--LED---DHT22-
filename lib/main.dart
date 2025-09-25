@@ -129,6 +129,24 @@ class ESP8266Discovery {
     }
     return null;
   }
+  
+  static Future<String?> getConnectedWifiSSID(String ip) async {
+    try {
+      var response = await http
+          .get(
+            Uri.parse('http://$ip/wifi_status'),
+          )
+          .timeout(const Duration(seconds: 3));
+      
+      if (response.statusCode == 200) {
+        var data = json.decode(response.body);
+        return data['ssid'] ?? data['wifiSSID'];
+      }
+    } catch (e) {
+      print('Error getting connected WiFi SSID: $e');
+    }
+    return null;
+  }
 }
 
 // ========== Updated IoTProject Class ==========
@@ -142,6 +160,7 @@ class IoTProject {
   int mqttPort;
   String wifiSSID;
   String wifiPassword;
+  String? connectedWifiSSID; // Actual WiFi SSID connected to ESP8266
   bool yellowLedStatus;
   bool greenLedStatus;
   bool whiteLedStatus;
@@ -160,6 +179,7 @@ class IoTProject {
     this.mqttPort = 1883,
     required this.wifiSSID,
     required this.wifiPassword,
+    this.connectedWifiSSID,
     this.yellowLedStatus = false,
     this.greenLedStatus = false,
     this.whiteLedStatus = false,
@@ -179,6 +199,7 @@ class IoTProject {
     'mqttPort': mqttPort,
     'wifiSSID': wifiSSID,
     'wifiPassword': wifiPassword,
+    'connectedWifiSSID': connectedWifiSSID,
     'yellowLedStatus': yellowLedStatus,
     'greenLedStatus': greenLedStatus,
     'whiteLedStatus': whiteLedStatus,
@@ -198,6 +219,7 @@ class IoTProject {
     mqttPort: json['mqttPort'] ?? 1883,
     wifiSSID: json['wifiSSID'],
     wifiPassword: json['wifiPassword'],
+    connectedWifiSSID: json['connectedWifiSSID'],
     yellowLedStatus: json['yellowLedStatus'] ?? false,
     greenLedStatus: json['greenLedStatus'] ?? false,
     whiteLedStatus: json['whiteLedStatus'] ?? false,
@@ -230,9 +252,6 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   RawDatagramSocket? _udpSocket;
-  // WiFi status info
-  String? _currentWifiSSID;
-  int? _wifiSignalStrength;
 
   @override
   void initState() {
@@ -275,15 +294,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                   projects.first.mqttHost = data['mqttHost'] ?? projects.first.mqttHost;
                   projects.first.mqttPort = (data['mqttPort'] is int) ? data['mqttPort'] : projects.first.mqttPort;
                   projects.first.serverUrl = data['serverUrl'] ?? projects.first.serverUrl;
+                  projects.first.connectedWifiSSID = data['ssid'] ?? projects.first.connectedWifiSSID;
                   projects.first.isOnline = true;
                 }
                 _isDeviceOnline = true;
               });
-              
-              // Update WiFi status when device is discovered
-              if (data['ip'] != null) {
-                _getCurrentWifiStatus(data['ip']);
-              }
             }
           } catch (_) {}
         }
@@ -309,31 +324,17 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
           projects.first.mqttHost = info['mqttHost'] ?? 'test.mosquitto.org';
           projects.first.mqttPort = info['mqttPort'] ?? 1883;
           projects.first.serverUrl = info['serverUrl'] ?? '';
+          projects.first.connectedWifiSSID = info['ssid'] ?? info['wifiSSID'];
         });
       }
       
-      // Get current WiFi status
-      await _getCurrentWifiStatus(espIP);
-    }
-  }
-
-  Future<void> _getCurrentWifiStatus(String deviceIP) async {
-    try {
-      var response = await http
-          .get(
-            Uri.parse('http://$deviceIP/wifi_status'),
-          )
-          .timeout(const Duration(seconds: 3));
-      
-      if (response.statusCode == 200) {
-        var data = json.decode(response.body);
+      // Get connected WiFi SSID
+      String? connectedSSID = await ESP8266Discovery.getConnectedWifiSSID(espIP);
+      if (connectedSSID != null) {
         setState(() {
-          _currentWifiSSID = data['ssid'] ?? 'Unknown';
-          _wifiSignalStrength = data['rssi']?.toInt();
+          projects.first.connectedWifiSSID = connectedSSID;
         });
       }
-    } catch (e) {
-      print('Error getting WiFi status: $e');
     }
   }
 
@@ -452,13 +453,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         if (data['ledStatus'] != null) {
           projects.first.lastLedMode = data['ledStatus'];
         }
+        if (data['ssid'] != null) {
+          projects.first.connectedWifiSSID = data['ssid'];
+        }
         projects.first.lastUpdate = DateTime.now();
       });
-      
-      // Update WiFi status periodically when device is online
-      if (projects.isNotEmpty && projects.first.deviceIP != null) {
-        _getCurrentWifiStatus(projects.first.deviceIP!);
-      }
     }
   }
 
@@ -782,16 +781,6 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                     ],
                   ),
                 ),
-                if (isConnected)
-                  IconButton(
-                    onPressed: () {
-                      if (projects.isNotEmpty && projects.first.deviceIP != null) {
-                        _getCurrentWifiStatus(projects.first.deviceIP!);
-                      }
-                    },
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh WiFi Status',
-                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -811,14 +800,12 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
             ),
             const SizedBox(height: 16),
             if (isConnected) ...[
-              _buildWifiInfoRow('WiFi SSID', _currentWifiSSID ?? project.wifiSSID),
+              _buildWifiInfoRow('Connected WiFi', project.connectedWifiSSID ?? 'Unknown'),
+              const SizedBox(height: 8),
+              _buildWifiInfoRow('Configured WiFi', project.wifiSSID),
               const SizedBox(height: 8),
               if (project.deviceIP != null) ...[
                 _buildWifiInfoRow('Device IP', project.deviceIP!),
-                const SizedBox(height: 8),
-              ],
-              if (_wifiSignalStrength != null) ...[
-                _buildWifiInfoRow('Signal Strength', '${_wifiSignalStrength} dBm'),
                 const SizedBox(height: 8),
               ],
               _buildWifiInfoRow('Connection Status', 'Active'),
@@ -1138,6 +1125,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         setState(() {
           projects.first.wifiSSID = ssid;
           projects.first.wifiPassword = password;
+          projects.first.connectedWifiSSID = ssid; // Update connected WiFi SSID
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1151,11 +1139,6 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
 
         // After reboot, wait and auto-scan for the device on new network
         await _waitForDeviceAfterReboot();
-        
-        // Get updated WiFi status after reboot
-        if (projects.isNotEmpty && projects.first.deviceIP != null) {
-          await _getCurrentWifiStatus(projects.first.deviceIP!);
-        }
       } else if (res.statusCode == 422) {
         final body = res.body.isNotEmpty ? res.body : '{"reason":"Invalid"}';
         try {
@@ -1197,8 +1180,13 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         projects.first.isOnline = true;
       });
       
-      // Get WiFi status after device reconnects
-      await _getCurrentWifiStatus(newIP);
+      // Get updated WiFi SSID from device
+      String? connectedSSID = await ESP8266Discovery.getConnectedWifiSSID(newIP);
+      if (connectedSSID != null) {
+        setState(() {
+          projects.first.connectedWifiSSID = connectedSSID;
+        });
+      }
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Perangkat terdeteksi kembali di: $newIP'), backgroundColor: Colors.green),
