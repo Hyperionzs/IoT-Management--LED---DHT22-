@@ -96,7 +96,7 @@ class ESP8266Discovery {
           .get(
             Uri.parse('http://esp8266-sensor.local/wifi_status'),
           )
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         return 'esp8266-sensor.local';
       }
@@ -228,6 +228,8 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   // WiFi config controllers
   final TextEditingController _ssidController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  RawDatagramSocket? _udpSocket;
 
   @override
   void initState() {
@@ -241,6 +243,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     _loadProjects();
     _connectMQTT();
     _startAutoDiscovery();
+    _startUdpListener();
 
     // Prefill WiFi controllers from first project when available
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -249,6 +252,37 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         _passwordController.text = projects.first.wifiPassword;
       }
     });
+  }
+  void _startUdpListener() async {
+    try {
+      _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 12345, reuseAddress: true);
+      _udpSocket?.broadcastEnabled = true;
+      _udpSocket?.readEventsEnabled = true;
+      _udpSocket?.listen((event) {
+        if (event == RawSocketEvent.read) {
+          final dg = _udpSocket?.receive();
+          if (dg == null) return;
+          try {
+            final payload = utf8.decode(dg.data);
+            final data = json.decode(payload);
+            if (data is Map && data['device'] == 'ESP8266-Sensor') {
+              _safeSetState(() {
+                if (projects.isNotEmpty) {
+                  projects.first.deviceIP = data['ip'] ?? projects.first.deviceIP;
+                  projects.first.mqttHost = data['mqttHost'] ?? projects.first.mqttHost;
+                  projects.first.mqttPort = (data['mqttPort'] is int) ? data['mqttPort'] : projects.first.mqttPort;
+                  projects.first.serverUrl = data['serverUrl'] ?? projects.first.serverUrl;
+                  projects.first.isOnline = true;
+                }
+                _isDeviceOnline = true;
+              });
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (e) {
+      print('UDP listener error: $e');
+    }
   }
 
   void _startAutoDiscovery() async {
@@ -323,6 +357,9 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
           _safeSetState(() {
             _isMqttConnected = false;
             _isDeviceOnline = false;
+            if (projects.isNotEmpty) {
+              projects.first.isOnline = false;
+            }
           });
         };
 
@@ -375,6 +412,9 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     if (data['device'] == 'ESP8266-Sensor') {
       _safeSetState(() {
         _isDeviceOnline = true;
+        if (projects.isNotEmpty) {
+          projects.first.isOnline = true;
+        }
         if (data['temperature'] != null) {
           projects.first.lastTemperature = data['temperature'].toDouble();
         }
@@ -442,20 +482,24 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                                 ),
                               ],
                             ),
-                            Row(
-                              children: [
-                                _buildStatusIndicator(
-                                  'MQTT',
-                                  _isMqttConnected,
-                                  Icons.cloud,
-                                ),
-                                const SizedBox(width: 12),
-                                _buildStatusIndicator(
-                                  'Device',
-                                  _isDeviceOnline,
-                                  Icons.device_hub,
-                                ),
-                              ],
+                            Flexible(
+                              child: Wrap(
+                                spacing: 12,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.end,
+                                children: [
+                                  _buildStatusIndicator(
+                                    'MQTT',
+                                    _isMqttConnected,
+                                    Icons.cloud,
+                                  ),
+                                  _buildStatusIndicator(
+                                    'Device',
+                                    _isDeviceOnline,
+                                    Icons.device_hub,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -671,9 +715,18 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                 _buildControlButton('ON', Icons.power, Colors.green),
                 _buildControlButton('OFF', Icons.power_off, Colors.red),
                 _buildControlButton('BLINK_SLOW', Icons.flash_on, Colors.orange),
+                _buildControlButton('BLINK_MEDIUM', Icons.flash_on, Colors.amber),
                 _buildControlButton('BLINK_FAST', Icons.flash_on, Colors.purple),
                 _buildControlButton('SEQUENCE', Icons.timeline, Colors.blue),
                 _buildControlButton('WAVE', Icons.waves, Colors.teal),
+                _buildControlButton('ALL_ON', Icons.lightbulb, Colors.green.shade700),
+                _buildControlButton('ALL_OFF', Icons.lightbulb_outline, Colors.grey),
+                _buildControlButton('YELLOW_ON', Icons.circle, Colors.yellow.shade700),
+                _buildControlButton('YELLOW_OFF', Icons.circle_outlined, Colors.yellow.shade900),
+                _buildControlButton('GREEN_ON', Icons.circle, Colors.green.shade700),
+                _buildControlButton('GREEN_OFF', Icons.circle_outlined, Colors.green.shade900),
+                _buildControlButton('WHITE_ON', Icons.circle, Colors.blueGrey),
+                _buildControlButton('WHITE_OFF', Icons.circle_outlined, Colors.blueGrey.shade700),
               ],
             ),
           ],
@@ -757,7 +810,6 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   }
 
   Widget _buildWifiConfigPanel() {
-    final hasDevice = projects.isNotEmpty && projects.first.deviceIP != null;
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -790,10 +842,21 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
-              obscureText: true,
+              obscureText: _obscurePassword,
               decoration: const InputDecoration(
                 labelText: 'WiFi Password',
                 border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() { _obscurePassword = !_obscurePassword; });
+                },
+                icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                label: Text(_obscurePassword ? 'Show password' : 'Hide password'),
               ),
             ),
             const SizedBox(height: 12),
@@ -801,11 +864,26 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: hasDevice ? _applyWifiConfigToDevice : null,
+                    onPressed: _applyWifiConfigToDevice,
                     icon: const Icon(Icons.send),
-                    label: Text(hasDevice ? 'Apply to Device' : 'Device IP not set'),
+                    label: const Text('Apply to Device'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _disconnectWifiOnDevice,
+                    icon: const Icon(Icons.wifi_off),
+                    label: const Text('Disconnect WiFi'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -822,8 +900,8 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   }
 
   Future<void> _applyWifiConfigToDevice() async {
-    if (projects.isEmpty || projects.first.deviceIP == null) return;
-    final deviceIP = projects.first.deviceIP!;
+    if (projects.isEmpty) return;
+    String? deviceIP = projects.first.deviceIP;
     final ssid = _ssidController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -835,6 +913,24 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     }
 
     try {
+      // If IP not known, try to discover automatically
+      if (deviceIP == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mencari perangkat...')),
+        );
+        deviceIP = await ESP8266Discovery.getESP8266IP();
+        if (deviceIP == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Device IP belum ditemukan. Coba Scan di Auto-Discovery.'), backgroundColor: Colors.orange),
+          );
+          return;
+        }
+        setState(() {
+          projects.first.deviceIP = deviceIP;
+          projects.first.isOnline = true;
+        });
+      }
+
       final uri = Uri.parse('http://$deviceIP/config');
       final res = await http
           .post(
@@ -862,9 +958,85 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         try {
           await http.get(Uri.parse('http://$deviceIP/reboot')).timeout(const Duration(seconds: 3));
         } catch (_) {}
+
+        // After reboot, wait and auto-scan for the device on new network
+        await _waitForDeviceAfterReboot();
+      } else if (res.statusCode == 422) {
+        final body = res.body.isNotEmpty ? res.body : '{"reason":"Invalid"}';
+        try {
+          final msg = json.decode(body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal: ${msg['reason'] ?? 'SSID tidak ditemukan'}'), backgroundColor: Colors.orange),
+          );
+        } catch (_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('SSID tidak ditemukan'), backgroundColor: Colors.orange),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal menyimpan config (${res.statusCode})'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')), 
+      );
+    }
+  }
+
+  Future<void> _waitForDeviceAfterReboot() async {
+    // Give the device time to reboot and join WiFi
+    await Future.delayed(const Duration(seconds: 10));
+    String? newIP;
+    final int maxAttempts = 3;
+    for (int i = 0; i < maxAttempts; i++) {
+      newIP = await ESP8266Discovery.getESP8266IP();
+      if (newIP != null) break;
+      await Future.delayed(const Duration(seconds: 5));
+    }
+
+    if (newIP != null) {
+      setState(() {
+        projects.first.deviceIP = newIP;
+        projects.first.isOnline = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Perangkat terdeteksi kembali di: $newIP'), backgroundColor: Colors.green),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Perangkat belum terdeteksi. Coba tekan Scan di Auto-Discovery.'), backgroundColor: Colors.orange),
+      );
+    }
+  }
+
+  Future<void> _disconnectWifiOnDevice({bool clear = false}) async {
+    if (projects.isEmpty || projects.first.deviceIP == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Device IP belum diketahui. Gunakan Auto-Discovery.')),
+      );
+      return;
+    }
+    final ip = projects.first.deviceIP!;
+    try {
+      final uri = Uri.parse('http://$ip/wifi_disconnect${clear ? '?clear=1' : ''}');
+      final res = await http.post(uri).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        _safeSetState(() {
+          _isDeviceOnline = false;
+          projects.first.isOnline = false;
+          if (clear) {
+            projects.first.wifiSSID = '';
+            projects.first.wifiPassword = '';
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WiFi disconnected')), 
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal disconnect (${res.statusCode})'), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
@@ -910,6 +1082,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     _slideController.dispose();
     _ssidController.dispose();
     _passwordController.dispose();
+    try { _udpSocket?.close(); } catch (_) {}
     super.dispose();
   }
 }
