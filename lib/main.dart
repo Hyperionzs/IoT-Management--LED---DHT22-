@@ -113,6 +113,76 @@ class ESP8266Discovery {
     return null;
   }
   
+  // Fungsi untuk mendeteksi ESP8266 dalam AP mode
+  static Future<String?> getESP8266APMode() async {
+    try {
+      // Coba akses ESP8266 AP mode (default IP: 192.168.4.1)
+      var response = await http
+          .get(
+            Uri.parse('http://192.168.4.1/wifi_status'),
+          )
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        return '192.168.4.1';
+      }
+    } catch (e) {
+      print('AP mode detection failed: $e');
+    }
+    return null;
+  }
+  
+  // Fungsi untuk switch ESP8266 ke AP mode
+  static Future<bool> switchESP8266ToAPMode(String deviceIP) async {
+    try {
+      var response = await http
+          .post(
+            Uri.parse('http://$deviceIP/switch_to_ap'),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Failed to switch to AP mode: $e');
+      return false;
+    }
+  }
+  
+  // Fungsi untuk factory reset ESP8266
+  static Future<bool> factoryResetESP8266(String deviceIP) async {
+    try {
+      var response = await http
+          .post(
+            Uri.parse('http://$deviceIP/factory_reset'),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Failed to factory reset: $e');
+      return false;
+    }
+  }
+  
+  // Fungsi untuk configure WiFi dari AP mode
+  static Future<bool> configureWiFiFromAPMode(String ssid, String password) async {
+    try {
+      var response = await http
+          .post(
+            Uri.parse('http://192.168.4.1/wifi_config'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'wifiSSID': ssid,
+              'wifiPassword': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Failed to configure WiFi from AP mode: $e');
+      return false;
+    }
+  }
+  
   static Future<Map<String, dynamic>?> getESP8266Info(String ip) async {
     try {
       var response = await http
@@ -161,7 +231,7 @@ class IoTProject {
   String wifiSSID;
   String wifiPassword;
   String? connectedWifiSSID; // Actual WiFi SSID connected to ESP8266
-  bool yellowLedStatus;
+  bool purpleLedStatus;
   bool greenLedStatus;
   bool whiteLedStatus;
   double? lastTemperature;
@@ -180,7 +250,7 @@ class IoTProject {
     required this.wifiSSID,
     required this.wifiPassword,
     this.connectedWifiSSID,
-    this.yellowLedStatus = false,
+    this.purpleLedStatus = false,
     this.greenLedStatus = false,
     this.whiteLedStatus = false,
     this.lastTemperature,
@@ -200,7 +270,7 @@ class IoTProject {
     'wifiSSID': wifiSSID,
     'wifiPassword': wifiPassword,
     'connectedWifiSSID': connectedWifiSSID,
-    'yellowLedStatus': yellowLedStatus,
+    'purpleLedStatus': purpleLedStatus,
     'greenLedStatus': greenLedStatus,
     'whiteLedStatus': whiteLedStatus,
     'lastTemperature': lastTemperature,
@@ -220,7 +290,7 @@ class IoTProject {
     wifiSSID: json['wifiSSID'],
     wifiPassword: json['wifiPassword'],
     connectedWifiSSID: json['connectedWifiSSID'],
-    yellowLedStatus: json['yellowLedStatus'] ?? false,
+    purpleLedStatus: json['purpleLedStatus'] ?? false,
     greenLedStatus: json['greenLedStatus'] ?? false,
     whiteLedStatus: json['whiteLedStatus'] ?? false,
     lastTemperature: json['lastTemperature']?.toDouble(),
@@ -347,7 +417,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
           description: 'Auto-discovered ESP8266 device',
           wifiSSID: 'Sugooi',
           wifiPassword: 'Saturned',
-          yellowLedStatus: false,
+          purpleLedStatus: false,
           greenLedStatus: false,
           whiteLedStatus: false,
           lastTemperature: null,
@@ -898,8 +968,8 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                 _buildControlButton('WAVE', Icons.waves, Colors.teal),
                 _buildControlButton('ALL_ON', Icons.lightbulb, Colors.green.shade700),
                 _buildControlButton('ALL_OFF', Icons.lightbulb_outline, Colors.grey),
-                _buildControlButton('YELLOW_ON', Icons.circle, Colors.yellow.shade700),
-                _buildControlButton('YELLOW_OFF', Icons.circle_outlined, Colors.yellow.shade900),
+                _buildControlButton('PURPLE_ON', Icons.circle, Colors.purple.shade700),
+                _buildControlButton('PURPLE_OFF', Icons.circle_outlined, Colors.purple.shade900),
                 _buildControlButton('GREEN_ON', Icons.circle, Colors.green.shade700),
                 _buildControlButton('GREEN_OFF', Icons.circle_outlined, Colors.green.shade900),
                 _buildControlButton('WHITE_ON', Icons.circle, Colors.blueGrey),
@@ -986,6 +1056,96 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     );
   }
 
+  Widget _buildWiFiManagementButtons() {
+    if (projects.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final project = projects.first;
+    final isConnected = project.isOnline && project.deviceIP != null;
+    final isAPMode = project.deviceIP == '192.168.4.1';
+    
+    // Jika ESP8266 terhubung ke WiFi (bukan AP mode)
+    if (isConnected && !isAPMode) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _applyWifiConfigToDevice,
+                  icon: const Icon(Icons.send),
+                  label: const Text('Change WiFi'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _factoryResetDevice(),
+                  icon: const Icon(Icons.restore),
+                  label: const Text('Factory Reset'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    
+    // Jika ESP8266 dalam AP mode atau tidak terhubung
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _connectToAPMode,
+                icon: const Icon(Icons.wifi_find),
+                label: const Text('Connect to WiFi'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _switchToAPMode,
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('Switch to Config'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildWifiConfigPanel() {
     return Card(
       elevation: 4,
@@ -1037,39 +1197,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _applyWifiConfigToDevice,
-                    icon: const Icon(Icons.send),
-                    label: const Text('Apply to Device'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _disconnectWifiOnDevice,
-                    icon: const Icon(Icons.wifi_off),
-                    label: const Text('Disconnect WiFi'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            _buildWiFiManagementButtons(),
           ],
         ),
       ),
@@ -1229,6 +1357,350 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')), 
+      );
+    }
+  }
+
+  Future<void> _factoryResetDevice() async {
+    if (projects.isEmpty || projects.first.deviceIP == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Device IP belum diketahui. Gunakan Auto-Discovery.')),
+      );
+      return;
+    }
+
+    // Show confirmation dialog
+    bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Factory Reset'),
+        content: const Text(
+          'This will clear all WiFi configuration and switch ESP8266 to Access Point mode. '
+          'You will need to reconfigure WiFi settings after this action.\n\n'
+          'Are you sure you want to continue?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Performing factory reset...')),
+      );
+
+      bool success = await ESP8266Discovery.factoryResetESP8266(projects.first.deviceIP!);
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Factory reset completed! ESP8266 is now in configuration mode.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Update device status
+        _safeSetState(() {
+          _isDeviceOnline = false;
+          projects.first.isOnline = false;
+          projects.first.wifiSSID = '';
+          projects.first.wifiPassword = '';
+          projects.first.connectedWifiSSID = null;
+          projects.first.deviceIP = '192.168.4.1'; // AP mode IP
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to perform factory reset'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  Future<void> _switchToAPMode() async {
+    String? deviceIP;
+    if (projects.isNotEmpty) {
+      deviceIP = projects.first.deviceIP;
+    }
+
+    // Auto-discover IP if unknown
+    if (deviceIP == null || deviceIP.isEmpty) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mencari perangkat...')),
+        );
+        deviceIP = await ESP8266Discovery.getESP8266IP();
+        if (deviceIP != null && projects.isNotEmpty) {
+          _safeSetState(() {
+            projects.first.deviceIP = deviceIP!;
+            projects.first.isOnline = true;
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (deviceIP == null || deviceIP.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Device IP belum diketahui. Coba Auto-Discovery dulu.')),
+      );
+      return;
+    }
+    
+    // Show confirmation dialog
+    bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Switch to Configuration Mode'),
+        content: const Text(
+          'This will switch ESP8266 to Access Point mode for WiFi configuration. '
+          'You will need to connect to "ESP8266-Sensor-Config" WiFi network '
+          'with password "12345678" to continue configuration.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Switching to configuration mode...')),
+      );
+
+      bool success = await ESP8266Discovery.switchESP8266ToAPMode(deviceIP);
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Switched to configuration mode! Connect to "ESP8266-Sensor-Config" WiFi.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Update device status
+        _safeSetState(() {
+          _isDeviceOnline = false;
+          projects.first.isOnline = false;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to switch to configuration mode'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  Future<void> _connectToAPMode() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Checking for ESP8266 in configuration mode...')),
+      );
+
+      String? apIP = await ESP8266Discovery.getESP8266APMode();
+      
+      if (apIP != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ESP8266 found in configuration mode! You can now configure WiFi.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Update device IP to AP mode IP
+        _safeSetState(() {
+          projects.first.deviceIP = apIP;
+          projects.first.isOnline = true;
+        });
+        
+        // Show WiFi configuration dialog
+        _showAPModeConfigDialog();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ESP8266 not found in configuration mode. Make sure you are connected to "ESP8266-Sensor-Config" WiFi.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  void _showAPModeConfigDialog() {
+    final ssidController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Configure WiFi'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: ssidController,
+                decoration: const InputDecoration(
+                  labelText: 'WiFi SSID',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: const InputDecoration(
+                  labelText: 'WiFi Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () {
+                    setDialogState(() {
+                      obscurePassword = !obscurePassword;
+                    });
+                  },
+                  icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off),
+                  label: Text(obscurePassword ? 'Show password' : 'Hide password'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final ssid = ssidController.text.trim();
+                final password = passwordController.text.trim();
+                
+                if (ssid.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('SSID cannot be empty')),
+                  );
+                  return;
+                }
+                
+                Navigator.of(context).pop();
+                
+                try {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Configuring WiFi...')),
+                  );
+                  
+                  bool success = await ESP8266Discovery.configureWiFiFromAPMode(ssid, password);
+                  
+                  if (success) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('WiFi configured successfully! ESP8266 will connect to new network.'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    
+                    // Update local project
+                    _safeSetState(() {
+                      projects.first.wifiSSID = ssid;
+                      projects.first.wifiPassword = password;
+                      projects.first.connectedWifiSSID = ssid;
+                    });
+                    
+                    // Wait for device to reconnect
+                    await _waitForDeviceAfterAPConfig();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to configure WiFi'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              },
+              child: const Text('Configure'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _waitForDeviceAfterAPConfig() async {
+    // Wait for ESP8266 to switch back to Station mode and connect
+    await Future.delayed(const Duration(seconds: 15));
+    
+    String? newIP;
+    final int maxAttempts = 5;
+    for (int i = 0; i < maxAttempts; i++) {
+      newIP = await ESP8266Discovery.getESP8266IP();
+      if (newIP != null) break;
+      await Future.delayed(const Duration(seconds: 5));
+    }
+
+    if (newIP != null) {
+      _safeSetState(() {
+        projects.first.deviceIP = newIP;
+        projects.first.isOnline = true;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ESP8266 reconnected at: $newIP'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ESP8266 not found after configuration. Please check manually.'),
+          backgroundColor: Colors.orange,
+        ),
       );
     }
   }
