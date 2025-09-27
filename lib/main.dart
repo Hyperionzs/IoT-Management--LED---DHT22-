@@ -422,7 +422,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         IoTProject(
           id: '001',
           name: 'ESP8266 Smart Sensor',
-          description: 'Auto-discovered ESP8266 device',
+          description: 'Status Suhu',
           wifiSSID: 'Sugooi',
           wifiPassword: 'Saturned',
           purpleLedStatus: false,
@@ -1012,6 +1012,13 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   }
 
   Widget _buildControlPanel() {
+    if (projects.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final project = projects.first;
+    final isConnected = project.isOnline && project.deviceIP != null;
+    
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1020,33 +1027,114 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'LED Control',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+            Row(
               children: [
-                _buildControlButton('ON', Icons.power, Colors.green),
-                _buildControlButton('OFF', Icons.power_off, Colors.red),
-                _buildControlButton('BLINK_SLOW', Icons.flash_on, Colors.orange),
-                _buildControlButton('BLINK_MEDIUM', Icons.flash_on, Colors.amber),
-                _buildControlButton('BLINK_FAST', Icons.flash_on, Colors.purple),
-                _buildControlButton('SEQUENCE', Icons.timeline, Colors.blue),
-                _buildControlButton('WAVE', Icons.waves, Colors.teal),
-                _buildControlButton('ALL_ON', Icons.lightbulb, Colors.green.shade700),
-                _buildControlButton('ALL_OFF', Icons.lightbulb_outline, Colors.grey),
-                _buildControlButton('PURPLE_ON', Icons.circle, Colors.purple.shade700),
-                _buildControlButton('PURPLE_OFF', Icons.circle_outlined, Colors.purple.shade900),
-                _buildControlButton('GREEN_ON', Icons.circle, Colors.green.shade700),
-                _buildControlButton('GREEN_OFF', Icons.circle_outlined, Colors.green.shade900),
-                _buildControlButton('WHITE_ON', Icons.circle, Colors.blueGrey),
-                _buildControlButton('WHITE_OFF', Icons.circle_outlined, Colors.blueGrey.shade700),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.lightbulb,
+                    color: Colors.blue[600],
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'LED Control',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isConnected 
+                            ? 'Current Mode: ${project.lastLedMode}'
+                            : 'Device not connected',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isConnected ? Colors.green : Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isConnected ? 'Ready' : 'Offline',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Power Controls Section
+            _buildControlSection(
+              'Power Control',
+              Icons.power_settings_new,
+              [
+                _buildControlButton('ON', Icons.power, Colors.green, 'Turn On All LEDs'),
+                _buildControlButton('OFF', Icons.power_off, Colors.red, 'Turn Off All LEDs'),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Animation Effects Section
+            _buildControlSection(
+              'Animation Effects',
+              Icons.animation,
+              [
+                _buildControlButton('BLINK_SLOW', Icons.flash_on, Colors.orange, 'Slow Blink'),
+                _buildControlButton('BLINK_MEDIUM', Icons.flash_on, Colors.amber, 'Medium Blink'),
+                _buildControlButton('BLINK_FAST', Icons.flash_on, Colors.purple, 'Fast Blink'),
+                _buildControlButton('SEQUENCE', Icons.timeline, Colors.blue, 'Sequential Pattern'),
+                _buildControlButton('WAVE', Icons.waves, Colors.teal, 'Wave Effect'),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Individual LED Controls Section
+            _buildControlSection(
+              'Individual LED Control',
+              Icons.tune,
+              [
+                _buildControlButton('PURPLE_ON', Icons.circle, Colors.purple.shade700, 'Purple LED On'),
+                _buildControlButton('PURPLE_OFF', Icons.circle_outlined, Colors.purple.shade900, 'Purple LED Off'),
+                _buildControlButton('GREEN_ON', Icons.circle, Colors.green.shade700, 'Green LED On'),
+                _buildControlButton('GREEN_OFF', Icons.circle_outlined, Colors.green.shade900, 'Green LED Off'),
+                _buildControlButton('WHITE_ON', Icons.circle, Colors.blueGrey, 'White LED On'),
+                _buildControlButton('WHITE_OFF', Icons.circle_outlined, Colors.blueGrey.shade700, 'White LED Off'),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Master Controls Section
+            _buildControlSection(
+              'Master Controls',
+              Icons.lightbulb_outline,
+              [
+                _buildControlButton('ALL_ON', Icons.lightbulb, Colors.green.shade700, 'All LEDs On'),
+                _buildControlButton('ALL_OFF', Icons.lightbulb_outline, Colors.grey, 'All LEDs Off'),
               ],
             ),
           ],
@@ -1055,16 +1143,61 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
     );
   }
 
-  Widget _buildControlButton(String command, IconData icon, Color color) {
-    return ElevatedButton.icon(
-      onPressed: () => _sendMQTTCommand(command),
-      icon: Icon(icon, size: 18),
-      label: Text(command),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+  Widget _buildControlSection(String title, IconData icon, List<Widget> buttons) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.grey[600], size: 20),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: buttons,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlButton(String command, IconData icon, Color color, String tooltip) {
+    final project = projects.isNotEmpty ? projects.first : null;
+    final isConnected = project?.isOnline == true && project?.deviceIP != null;
+    final isCurrentMode = project?.lastLedMode == command;
+    
+    return Tooltip(
+      message: tooltip,
+      child: ElevatedButton.icon(
+        onPressed: isConnected ? () => _sendMQTTCommand(command) : null,
+        icon: Icon(icon, size: 16),
+        label: Text(
+          command.replaceAll('_', ' '),
+          style: const TextStyle(fontSize: 12),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isCurrentMode ? color.withOpacity(0.8) : color,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.grey[300],
+          disabledForegroundColor: Colors.grey[500],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: isCurrentMode 
+                ? BorderSide(color: color, width: 2)
+                : BorderSide.none,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          minimumSize: const Size(0, 36),
         ),
       ),
     );
