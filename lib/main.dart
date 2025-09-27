@@ -381,29 +381,37 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
   void _startAutoDiscovery() async {
     // Auto-discover ESP8266 devices
     String? espIP = await ESP8266Discovery.getESP8266IP();
+    
+    // If not found in normal mode, check for AP mode
+    if (espIP == null) {
+      espIP = await ESP8266Discovery.getESP8266APMode();
+    }
+    
     if (espIP != null && projects.isNotEmpty) {
       setState(() {
         projects.first.deviceIP = espIP;
         projects.first.isOnline = true;
       });
       
-      // Get device info
-      Map<String, dynamic>? info = await ESP8266Discovery.getESP8266Info(espIP);
-      if (info != null) {
-        setState(() {
-          projects.first.mqttHost = info['mqttHost'] ?? 'test.mosquitto.org';
-          projects.first.mqttPort = info['mqttPort'] ?? 1883;
-          projects.first.serverUrl = info['serverUrl'] ?? '';
-          projects.first.connectedWifiSSID = info['ssid'] ?? info['wifiSSID'];
-        });
-      }
-      
-      // Get connected WiFi SSID
-      String? connectedSSID = await ESP8266Discovery.getConnectedWifiSSID(espIP);
-      if (connectedSSID != null) {
-        setState(() {
-          projects.first.connectedWifiSSID = connectedSSID;
-        });
+      // Get device info (only if not in AP mode)
+      if (espIP != '192.168.4.1') {
+        Map<String, dynamic>? info = await ESP8266Discovery.getESP8266Info(espIP);
+        if (info != null) {
+          setState(() {
+            projects.first.mqttHost = info['mqttHost'] ?? 'test.mosquitto.org';
+            projects.first.mqttPort = info['mqttPort'] ?? 1883;
+            projects.first.serverUrl = info['serverUrl'] ?? '';
+            projects.first.connectedWifiSSID = info['ssid'] ?? info['wifiSSID'];
+          });
+        }
+        
+        // Get connected WiFi SSID
+        String? connectedSSID = await ESP8266Discovery.getConnectedWifiSSID(espIP);
+        if (connectedSSID != null) {
+          setState(() {
+            projects.first.connectedWifiSSID = connectedSSID;
+          });
+        }
       }
     }
   }
@@ -805,6 +813,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
 
     final project = projects.first;
     final isConnected = project.isOnline && project.deviceIP != null;
+    final isAPMode = project.deviceIP == '192.168.4.1';
     
     return Card(
       elevation: 4,
@@ -819,12 +828,20 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isConnected ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                    color: isAPMode 
+                        ? Colors.orange.withOpacity(0.1)
+                        : isConnected 
+                            ? Colors.green.withOpacity(0.1) 
+                            : Colors.red.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    Icons.wifi,
-                    color: isConnected ? Colors.green : Colors.red,
+                    isAPMode ? Icons.wifi_tethering : Icons.wifi,
+                    color: isAPMode 
+                        ? Colors.orange
+                        : isConnected 
+                            ? Colors.green 
+                            : Colors.red,
                     size: 24,
                   ),
                 ),
@@ -842,7 +859,11 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        isConnected ? 'Connected to ESP8266' : 'Not connected',
+                        isAPMode 
+                            ? 'ESP8266 in Access Point Mode'
+                            : isConnected 
+                                ? 'Connected to ESP8266' 
+                                : 'Not connected',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 14,
@@ -854,11 +875,19 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isConnected ? Colors.green : Colors.red,
+                    color: isAPMode 
+                        ? Colors.orange
+                        : isConnected 
+                            ? Colors.green 
+                            : Colors.red,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    isConnected ? 'Connected' : 'Disconnected',
+                    isAPMode 
+                        ? 'AP Mode'
+                        : isConnected 
+                            ? 'Connected' 
+                            : 'Disconnected',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -869,7 +898,51 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
               ],
             ),
             const SizedBox(height: 16),
-            if (isConnected) ...[
+            if (isAPMode) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.wifi_tethering, color: Colors.orange[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Access Point Mode Active',
+                          style: TextStyle(
+                            color: Colors.orange[700],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ESP8266 is currently in configuration mode. Connect to WiFi network "ESP8266-Sensor-Config" with password "12345678" to configure WiFi settings.',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildWifiInfoRow('Device IP', '192.168.4.1'),
+              const SizedBox(height: 8),
+              _buildWifiInfoRow('AP Network', 'ESP8266-Sensor-Config'),
+              const SizedBox(height: 8),
+              _buildWifiInfoRow('AP Password', '12345678'),
+              const SizedBox(height: 8),
+              _buildWifiInfoRow('Mode', 'Configuration'),
+            ] else if (isConnected) ...[
               _buildWifiInfoRow('Connected WiFi', project.connectedWifiSSID ?? 'Unknown'),
               const SizedBox(height: 8),
               _buildWifiInfoRow('Configured WiFi', project.wifiSSID),
@@ -1031,6 +1104,7 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
             const Text(
               '• Gunakan saat pertama kali setup atau setelah mengganti WiFi (SSID/Password).\n'
               '• Aplikasi mencoba mDNS (esp8266-sensor.local) lalu scan jaringan lokal.\n'
+              '• Juga mendeteksi ESP8266 dalam Access Point mode (192.168.4.1).\n'
               '• Setelah apply WiFi dan reboot, tunggu 10–20 detik lalu tekan Scan agar IP baru terdeteksi.',
               style: TextStyle(
                 color: Colors.grey,
@@ -1314,11 +1388,20 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         setState(() {
           projects.first.connectedWifiSSID = connectedSSID;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil terhubung ke jaringan: $connectedSSID'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Perangkat terdeteksi kembali di: $newIP'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Perangkat terdeteksi kembali di: $newIP'), backgroundColor: Colors.green),
-      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Perangkat belum terdeteksi. Coba tekan Scan di Auto-Discovery.'), backgroundColor: Colors.orange),
@@ -1689,12 +1772,26 @@ class _IoTDashboardScreenState extends State<IoTDashboardScreen>
         projects.first.isOnline = true;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ESP8266 reconnected at: $newIP'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Try to fetch the connected SSID to show success message
+      String? connectedSSID = await ESP8266Discovery.getConnectedWifiSSID(newIP);
+      if (connectedSSID != null) {
+        _safeSetState(() {
+          projects.first.connectedWifiSSID = connectedSSID;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berhasil terhubung ke jaringan: $connectedSSID'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ESP8266 reconnected at: $newIP'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
